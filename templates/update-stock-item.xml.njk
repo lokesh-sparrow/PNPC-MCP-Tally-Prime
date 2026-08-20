@@ -11,6 +11,11 @@
             <NAME>{{ name }}</NAME>
             {% if group %}<PARENT>{{ group }}</PARENT>{% endif %}
             {% if unit %}<BASEUNITS>{{ unit }}</BASEUNITS>{% endif %}
+            {% if description %}<DESCRIPTION>{{ description }}</DESCRIPTION>{% endif %}
+            {% if rateOfVat is not undefined %}<RATEOFVAT>{{ rateOfVat }}</RATEOFVAT>{% endif %}
+            {% if ignoreNegativeStock is not undefined %}<IGNORENEGATIVESTOCK>{{ "Yes" if ignoreNegativeStock else "No" }}</IGNORENEGATIVESTOCK>{% endif %}
+            {% for key, value in extraFields %}<{{ key }}>{{ value }}</{{ key }}>
+            {% endfor %}
           </STOCKITEM>
         </TALLYMESSAGE>
       </REQUESTDATA>

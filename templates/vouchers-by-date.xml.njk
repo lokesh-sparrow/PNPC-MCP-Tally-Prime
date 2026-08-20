@@ -1,0 +1,45 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>PNPCMCPVoucherLookup</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>{{ fromDate }}</SVFROMDATE>
+        <SVTODATE>{{ toDate }}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="PNPCMCPVoucherLookup">
+            <FORMS>PNPCMCPVoucherLookupForm</FORMS>
+          </REPORT>
+          <FORM NAME="PNPCMCPVoucherLookupForm">
+            <PARTS>PNPCMCPVoucherLookupPart</PARTS>
+            <XMLTAG>DATA</XMLTAG>
+          </FORM>
+          <PART NAME="PNPCMCPVoucherLookupPart">
+            <LINES>PNPCMCPVoucherLookupLine</LINES>
+            <REPEAT>PNPCMCPVoucherLookupLine : PNPCMCPVoucherLookupCollection</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPVoucherLookupLine">
+            <FIELDS>FldGuid,FldDate,FldVoucherType,FldVoucherNumber,FldIsCancelled</FIELDS>
+            <XMLTAG>ROW</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldGuid"><SET>$Guid</SET><XMLTAG>guid</XMLTAG></FIELD>
+          <FIELD NAME="FldDate"><SET>$Date</SET><XMLTAG>date</XMLTAG></FIELD>
+          <FIELD NAME="FldVoucherType"><SET>$VoucherTypeName</SET><XMLTAG>voucher_type</XMLTAG></FIELD>
+          <FIELD NAME="FldVoucherNumber"><SET>$VoucherNumber</SET><XMLTAG>voucher_number</XMLTAG></FIELD>
+          <FIELD NAME="FldIsCancelled"><SET>$IsCancelled</SET><XMLTAG>is_cancelled</XMLTAG></FIELD>
+          <COLLECTION NAME="PNPCMCPVoucherLookupCollection">
+            <TYPE>Voucher</TYPE>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

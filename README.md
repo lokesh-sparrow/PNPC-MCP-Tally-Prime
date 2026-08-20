@@ -98,7 +98,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (30 total)
+## Available tools (44 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -122,22 +122,52 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `get_bills_receivable` | `asOf` | Outstanding Bills Receivable |
 | `get_bills_payable` | `asOf` | Outstanding Bills Payable |
 
-### Write
+### Write — vouchers
+
+| Tool | Input | Output |
+|---|---|---|
+| `create_voucher` | `voucherType`, `date`, `narration?`, `debitLedger`/`creditLedger`/`amount` (simple 2-leg) **or** `entries?` (3+ legs), plus `debitBillName?`, `debitBillType?`, `creditBillName?`, `creditBillType?`, `debitCostCentre?`, `creditCostCentre?`, `costCategory?` | Creates a Payment/Receipt/Journal/Contra voucher — either a simple debit+credit pair, or any number of lines via `entries` (e.g. one payment split across three expense ledgers). Bill-wise allocation (`New Ref` / `Agst Ref`) requires `maintainBillWise` to have been set on the ledger |
+| `update_voucher` | `voucherType`, `voucherNumber`, `date`, `narration?`, `debitLedger`/`creditLedger`/`amount` **or** `entries?` | Replaces an existing voucher's entries in place — matched by type + date + voucher number |
+| `delete_voucher` | `voucherType`, `voucherNumber`, `date` | Permanently deletes a voucher — no trace left, distinct from cancelling (which keeps it visible, marked Cancelled) |
+| `create_stock_journal` | `date`, `narration?`, `sourceItem`, `sourceQty`, `sourceRate`, `destItem`, `destQty`, `destRate`, `unit`, `godown?`, `voucherNumber?` | Creates a Stock Journal voucher moving inventory from one stock item to another (transfer or simple conversion). Inventory-only, no ledger entries |
+| `update_stock_journal` | Same fields as `create_stock_journal`, plus required `voucherNumber` | Replaces an existing Stock Journal's source/destination lines in place |
+| `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Creates a real item-invoice Sales voucher — stock item lines with quantity/rate/discount, each posted to its own Sales ledger, grouped into one VAT line per distinct rate. Distinct from `create_voucher`, which has no stock item support. `voucherNumber`: some Tally configurations stop auto-numbering item-invoice vouchers via the XML gateway (confirmed live) — pass it explicitly if creation fails with a blank `EXCEPTIONS:1`. **Note:** using the *same* party ledger/stock item in both a Sales and a Purchase invoice can make it return `Cannot be deleted!` afterward — a Tally **Company Data → Rewrite** clears this (not a permanent lock) |
+| `update_sales_invoice` | Same fields as `create_sales_invoice`, plus required `voucherNumber` | Replaces an existing Sales invoice's item lines/party/narration in place, instead of delete+recreate |
+| `create_purchase_invoice` | Same shape as `create_sales_invoice`, with `purchaseLedger` per item instead of `salesLedger` | Creates a real item-invoice Purchase voucher — the buying-side mirror of `create_sales_invoice`. Same dual-role deletion caveat applies |
+| `update_purchase_invoice` | Same fields as `create_purchase_invoice`, plus required `voucherNumber` | Replaces an existing Purchase invoice's item lines in place |
+| `create_credit_note` | Same shape as `create_sales_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Sales-return Credit Note — sign convention mirrors Purchase's. **Extrapolated** from that proven convention, not reverse-engineered from a real example — verify after use |
+| `update_credit_note` | Same fields as `create_credit_note`, plus required `voucherNumber` | Replaces an existing Credit Note's item lines in place |
+| `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. Same extrapolated-convention caveat as `create_credit_note` |
+| `update_debit_note` | Same fields as `create_debit_note`, plus required `voucherNumber` | Replaces an existing Debit Note's item lines in place |
+| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher recording a counted quantity, so Tally shows the shortage/excess variance in stock reports. Inventory-only, zero value — doesn't post any accounting write-off itself. **Extrapolated** from Tally's documented schema — verify after use |
+| `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
+
+> ⚠️ **Voucher type collision, confirmed live:** Tally's Alter/Delete lookup
+> (`update_voucher`, `update_sales_invoice`, `update_purchase_invoice`,
+> `update_credit_note`, `update_debit_note`, `update_stock_journal`,
+> `update_physical_stock`, `delete_voucher`) matches by **date + voucher
+> number only** — it does not scope by voucher type, even though you pass
+> one. If two different voucher types share the same number on the same
+> date (common, since each type numbers independently), it can silently
+> alter/delete the wrong one. Every one of these tools now checks for that
+> ambiguity first and **refuses** rather than risk it — resolve the
+> collision in Tally (renumber one of them) if you hit this error.
+
+### Write — masters
 
 | Tool | Input | Output |
 |---|---|---|
 | `create_ledger` | `name`, `oldName?`, `parent`, `openingBalance?`, `maintainBillWise?`, `trn?`, `email?`, `website?`, `phone?`, `mobile?`, `billCreditPeriod?`, `creditLimit?`, `address?`, `state?`, `country?`, `pincode?`, `mailingName?`, `addressApplicableFrom?`, `extraFields?` | Creates a ledger under the given group — or, if `oldName` is passed, alters/renames that existing ledger instead. `extraFields` is an escape hatch for any other native Tally ledger field by exact tag name |
-| `create_voucher` | `voucherType`, `date`, `narration?`, `debitLedger`/`creditLedger`/`amount` (simple 2-leg) **or** `entries?` (3+ legs), plus `debitBillName?`, `debitBillType?`, `creditBillName?`, `creditBillType?`, `debitCostCentre?`, `creditCostCentre?`, `costCategory?` | Creates a Payment/Receipt/Sales/Purchase/Journal voucher — either a simple debit+credit pair, or any number of lines via `entries` (e.g. one payment split across three expense ledgers). Bill-wise allocation (`New Ref` / `Agst Ref`) requires `maintainBillWise` to have been set on the ledger. Cost centre allocation works standalone |
-| `update_voucher` | `voucherType`, `voucherNumber`, `date`, `narration?`, `debitLedger`, `creditLedger`, `amount`, `debitCostCentre?`, `creditCostCentre?`, `costCategory?` | Replaces an existing voucher's entries — matched by type + date + voucher number, which must already exist and be unique |
-| `delete_voucher` | `voucherType`, `voucherNumber`, `date` | Permanently deletes a voucher — no trace left, distinct from cancelling (which keeps it visible, marked Cancelled) |
-| `create_stock_journal` | `date`, `narration?`, `sourceItem`, `sourceQty`, `sourceRate`, `destItem`, `destQty`, `destRate`, `unit`, `godown?` | Creates a Stock Journal voucher moving inventory from one stock item to another (transfer or simple conversion). Inventory-only, no ledger entries |
-| `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?` | Creates a real item-invoice Sales voucher — stock item lines with quantity/rate, each posted to its own Sales ledger, plus one optional VAT line on the total. Distinct from `create_voucher`, which has no stock item support. **Note:** using the *same* party ledger/stock item in both a Sales and a Purchase invoice can make it return `Cannot be deleted!` afterward — a Tally **Company Data → Rewrite** clears this (not a permanent lock). Using an item in only one of the two, or in real ongoing business (buy and sell the same item freely), is unaffected |
-| `create_purchase_invoice` | Same shape as `create_sales_invoice`, with `purchaseLedger` per item instead of `salesLedger` | Creates a real item-invoice Purchase voucher — the buying-side mirror of `create_sales_invoice`. Same dual-role deletion caveat applies |
-| `create_group` | `name`, `parent` | Creates an account group nested under a parent |
+| `create_group` | `name`, `oldName?`, `parent` | Creates an account group nested under a parent — or renames/reparents an existing one if `oldName` is passed |
+| `create_stock_group` | `name`, `parent` | Creates a Stock Group (the category `create_stock_item`'s `group` field references) — distinct from `create_group`'s account groups |
 | `create_stock_item` | `name`, `group`, `unit`, `openingBalance?`, `openingRate?`, `description?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Creates a stock item. `extraFields` is an escape hatch for any other native field by exact tag name |
-| `update_stock_item` | `name`, `group`, `unit` | Updates an existing stock item's group/unit |
+| `update_stock_item` | `name`, `group?`, `unit?`, `description?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Updates any subset of an existing stock item's fields — same coverage as `create_stock_item`, all optional except `name` |
 | `delete_stock_item` | `name` | Deletes a stock item (fails if it has transactions posted) |
-| `delete_master` | `collection`, `names` | Deletes one or more masters of any type — `LEDGER`, `GROUP`, `STOCKITEM`, `VOUCHERTYPE`, `UNIT`, `GODOWN`, `COSTCATEGORY`, `COSTCENTRE`, etc. — by exact name |
+| `create_unit` | `symbol`, `formalName?`, `decimalPlaces?` | Creates a simple Unit of Measure (e.g. `'Kg'`) — required before using a unit that doesn't exist yet |
+| `create_godown` | `name`, `parent?` | Creates a Godown/Location, optionally nested under a parent godown — pass the parent's plain name, not a dotted path |
+| `create_cost_category` | `name`, `allocateToRevenue?`, `allocateToNonRevenue?` | Creates a Cost Category (grouping of cost centres) |
+| `create_cost_centre` | `name`, `category?`, `parent?` | Creates a Cost Centre for tagging voucher entries (see `create_voucher`'s cost centre fields) |
+| `delete_master` | `collection`, `names` | Deletes one or more masters of any type — `LEDGER`, `GROUP`, `STOCKGROUP`, `STOCKITEM`, `VOUCHERTYPE`, `UNIT`, `GODOWN`, `COSTCATEGORY`, `COSTCENTRE`, etc. — by exact name |
 
 > ⚠️ `create_ledger` / `update_voucher` / `delete_stock_item` / `delete_master` /
 > `delete_voucher` modify or remove existing data. Keep a Tally backup before
@@ -166,8 +196,8 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `sync_to_sql` | — | Pulls ledgers, groups, stock items, and vouchers (last 365 days) into a local in-memory SQL cache |
-| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(date, voucher_type, ledger, amount, narration)` |
+| `sync_to_sql` | — | Pulls ledgers, groups, and stock items into a local in-memory SQL cache. Does **not** sync vouchers — Tally's Day Book export doesn't page well for bulk historical pulls; use `get_vouchers`/`get_ledger_vouchers` per date range for those |
+| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`. There is no `vouchers` table |
 
 ## Environment variables
 

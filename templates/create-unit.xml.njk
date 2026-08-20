@@ -1,0 +1,21 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <UNIT NAME="{{ symbol }}" ACTION="Create">
+            <NAME>{{ symbol }}</NAME>
+            <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
+            <SYMBOL>{{ symbol }}</SYMBOL>
+            {% if formalName %}<FORMALNAME>{{ formalName }}</FORMALNAME>{% endif %}
+            <DECIMALPLACES>{{ decimalPlaces }}</DECIMALPLACES>
+          </UNIT>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

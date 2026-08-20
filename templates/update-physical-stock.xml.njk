@@ -1,0 +1,36 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Physical Stock" ACTION="Alter">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Physical Stock</VOUCHERTYPENAME>
+            <NARRATION>{{ narration }}</NARRATION>
+            {% for item in items %}<ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISPHYSICALQTYENTERED>Yes</ISPHYSICALQTYENTERED>
+              <RATE>0/{{ item.unit }}</RATE>
+              <AMOUNT>0</AMOUNT>
+              <ACTUALQTY>{{ item.actualQty }} {{ item.unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ item.actualQty }} {{ item.unit }}</BILLEDQTY>
+              {% if item.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
+                <AMOUNT>0</AMOUNT>
+                <ACTUALQTY>{{ item.actualQty }} {{ item.unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ item.actualQty }} {{ item.unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+            </ALLINVENTORYENTRIES.LIST>
+            {% endfor %}
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -7,12 +7,11 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Debit Note" ACTION="Alter" OBJVIEW="Invoice Voucher View">
             <DATE>{{ tallyDate }}</DATE>
-            <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+            <VOUCHERTYPENAME>Debit Note</VOUCHERTYPENAME>
             <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
             <ISINVOICE>Yes</ISINVOICE>
-            {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
             <PARTYNAME>{{ partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
@@ -32,7 +31,7 @@
                 <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
               </BATCHALLOCATIONS.LIST>{% endif %}
               <ACCOUNTINGALLOCATIONS.LIST>
-                <LEDGERNAME>{{ item.salesLedger }}</LEDGERNAME>
+                <LEDGERNAME>{{ item.purchaseLedger }}</LEDGERNAME>
                 <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
                 <AMOUNT>{{ item.amount }}</AMOUNT>
               </ACCOUNTINGALLOCATIONS.LIST>

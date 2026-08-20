@@ -7,14 +7,11 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          {% if oldName %}
-          <GROUP NAME="{{ oldName }}" ACTION="Alter">
-          {% else %}
-          <GROUP NAME="{{ name }}" ACTION="Create">
-          {% endif %}
+          <COSTCENTRE NAME="{{ name }}" ACTION="Create">
             <NAME>{{ name }}</NAME>
-            <PARENT>{{ parent }}</PARENT>
-          </GROUP>
+            {% if category %}<CATEGORY>{{ category }}</CATEGORY>{% endif %}
+            {% if parent %}<PARENT>{{ parent }}</PARENT>{% endif %}
+          </COSTCENTRE>
         </TALLYMESSAGE>
       </REQUESTDATA>
     </IMPORTDATA>

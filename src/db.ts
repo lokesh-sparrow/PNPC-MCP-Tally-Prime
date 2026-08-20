@@ -23,14 +23,6 @@ async function ensureSchema(): Promise<void> {
         parent TEXT,
         closing_balance NUMERIC
       );
-      CREATE TABLE IF NOT EXISTS vouchers (
-        id SERIAL PRIMARY KEY,
-        date TEXT,
-        voucher_type TEXT,
-        ledger TEXT,
-        amount NUMERIC,
-        narration TEXT
-      );
     `).then(() => undefined);
   }
   await schemaReady;

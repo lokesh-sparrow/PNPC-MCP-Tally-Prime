@@ -12,6 +12,7 @@
             <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
             <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
             <ISINVOICE>Yes</ISINVOICE>
+            {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
             <PARTYNAME>{{ partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
@@ -19,12 +20,13 @@
               <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
               <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
               <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
+              {% if item.discountPercent %}<DISCOUNT>{{ item.discountPercent }}</DISCOUNT>{% endif %}
               <AMOUNT>-{{ item.amount }}</AMOUNT>
               <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
               <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
               {% if item.godown %}<BATCHALLOCATIONS.LIST>
                 <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
-                <BATCHNAME>Primary Batch</BATCHNAME>
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
                 <AMOUNT>-{{ item.amount }}</AMOUNT>
                 <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
                 <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
@@ -46,13 +48,14 @@
                 <AMOUNT>{{ partyAmount }}</AMOUNT>
               </BILLALLOCATIONS.LIST>{% endif %}
             </LEDGERENTRIES.LIST>
-            {% if vatLedger %}<LEDGERENTRIES.LIST>
-              <LEDGERNAME>{{ vatLedger }}</LEDGERNAME>
+            {% for group in taxGroups %}<LEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ group.vatLedger }}</LEDGERNAME>
               <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-              <AMOUNT>-{{ vatAmount }}</AMOUNT>
-              <RATEOFINVOICETAX.LIST TYPE="Number"><RATEOFINVOICETAX> {{ vatRatePercent }}</RATEOFINVOICETAX></RATEOFINVOICETAX.LIST>
-              <VATEXPAMOUNT>{{ vatAmount }}</VATEXPAMOUNT>
-            </LEDGERENTRIES.LIST>{% endif %}
+              <AMOUNT>-{{ group.vatAmount }}</AMOUNT>
+              <RATEOFINVOICETAX.LIST TYPE="Number"><RATEOFINVOICETAX> {{ group.vatRatePercent }}</RATEOFINVOICETAX></RATEOFINVOICETAX.LIST>
+              <VATEXPAMOUNT>{{ group.vatAmount }}</VATEXPAMOUNT>
+            </LEDGERENTRIES.LIST>
+            {% endfor %}
           </VOUCHER>
         </TALLYMESSAGE>
       </REQUESTDATA>

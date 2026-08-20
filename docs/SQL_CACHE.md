@@ -20,7 +20,8 @@ external database server involved.
 | `ledgers` | `name`, `parent`, `closing_balance` |
 | `groups` | `name`, `parent` |
 | `stock_items` | `name`, `parent`, `closing_balance` |
-| `vouchers` | `date`, `voucher_type`, `ledger`, `amount`, `narration` (reserved — not bulk-synced yet, see below) |
+
+There is no `vouchers` table — voucher data isn't cached here at all (see Limitations).
 
 ## Example
 
@@ -38,9 +39,9 @@ query_sql: SELECT name, closing_balance FROM ledgers
 - **Snapshot, not live.** Data reflects Tally's state at the moment you last
   ran `sync_to_sql`, not the current moment. Re-sync before answering
   questions that need up-to-the-minute figures.
-- **Vouchers aren't bulk-synced.** Tally's Day Book export doesn't page well
-  across large date ranges, so `vouchers` stays empty for now — use
-  `get_vouchers` / `get_ledger_vouchers` for voucher-level data.
+- **Vouchers aren't cached at all.** Tally's Day Book export doesn't page well
+  across large date ranges, so there's no `vouchers` table to sync into — use
+  `get_vouchers` / `get_ledger_vouchers` for voucher-level data instead.
 - **Read-only.** `query_sql` rejects anything that isn't a single `SELECT`
   (see the `DDL_KEYWORDS` guard in `src/db.ts`) — it cannot be used to write
   back to Tally.

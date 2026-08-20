@@ -7,10 +7,9 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="Stock Journal" ACTION="Create">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Stock Journal" ACTION="Alter">
             <DATE>{{ tallyDate }}</DATE>
             <VOUCHERTYPENAME>Stock Journal</VOUCHERTYPENAME>
-            {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
             <INVENTORYENTRIESIN.LIST>
               <STOCKITEMNAME>{{ destItem }}</STOCKITEMNAME>

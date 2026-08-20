@@ -7,12 +7,11 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Sales" ACTION="Alter" OBJVIEW="Invoice Voucher View">
             <DATE>{{ tallyDate }}</DATE>
             <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
             <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
             <ISINVOICE>Yes</ISINVOICE>
-            {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
             <PARTYNAME>{{ partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>

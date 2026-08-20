@@ -7,9 +7,9 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">
+          <VOUCHER VCHTYPE="Credit Note" ACTION="Create" OBJVIEW="Invoice Voucher View">
             <DATE>{{ tallyDate }}</DATE>
-            <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+            <VOUCHERTYPENAME>Credit Note</VOUCHERTYPENAME>
             <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
             <ISINVOICE>Yes</ISINVOICE>
             {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
@@ -18,40 +18,40 @@
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
             {% for item in items %}<ALLINVENTORYENTRIES.LIST>
               <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
-              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
               <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
               {% if item.discountPercent %}<DISCOUNT>{{ item.discountPercent }}</DISCOUNT>{% endif %}
-              <AMOUNT>{{ item.amount }}</AMOUNT>
+              <AMOUNT>-{{ item.amount }}</AMOUNT>
               <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
               <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
               {% if item.godown %}<BATCHALLOCATIONS.LIST>
                 <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
                 <BATCHNAME>{{ item.batchName }}</BATCHNAME>
-                <AMOUNT>{{ item.amount }}</AMOUNT>
+                <AMOUNT>-{{ item.amount }}</AMOUNT>
                 <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
                 <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
               </BATCHALLOCATIONS.LIST>{% endif %}
               <ACCOUNTINGALLOCATIONS.LIST>
                 <LEDGERNAME>{{ item.salesLedger }}</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-                <AMOUNT>{{ item.amount }}</AMOUNT>
+                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                <AMOUNT>-{{ item.amount }}</AMOUNT>
               </ACCOUNTINGALLOCATIONS.LIST>
             </ALLINVENTORYENTRIES.LIST>
             {% endfor %}<LEDGERENTRIES.LIST>
               <LEDGERNAME>{{ partyLedger }}</LEDGERNAME>
-              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
               <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
-              <AMOUNT>-{{ partyAmount }}</AMOUNT>
+              <AMOUNT>{{ partyAmount }}</AMOUNT>
               {% if billName %}<BILLALLOCATIONS.LIST>
                 <NAME>{{ billName }}</NAME>
                 <BILLTYPE>{{ billType }}</BILLTYPE>
-                <AMOUNT>-{{ partyAmount }}</AMOUNT>
+                <AMOUNT>{{ partyAmount }}</AMOUNT>
               </BILLALLOCATIONS.LIST>{% endif %}
             </LEDGERENTRIES.LIST>
             {% for group in taxGroups %}<LEDGERENTRIES.LIST>
               <LEDGERNAME>{{ group.vatLedger }}</LEDGERNAME>
-              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-              <AMOUNT>{{ group.vatAmount }}</AMOUNT>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-{{ group.vatAmount }}</AMOUNT>
               <RATEOFINVOICETAX.LIST TYPE="Number"><RATEOFINVOICETAX> {{ group.vatRatePercent }}</RATEOFINVOICETAX></RATEOFINVOICETAX.LIST>
               <VATEXPAMOUNT>{{ group.vatAmount }}</VATEXPAMOUNT>
             </LEDGERENTRIES.LIST>

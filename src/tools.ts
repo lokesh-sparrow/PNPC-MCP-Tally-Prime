@@ -331,8 +331,116 @@ export const tools = [
           description:
             "Godown for both legs (optional — only needed if the items have godown/location tracking enabled).",
         },
+        voucherNumber: {
+          type: "string",
+          description: "Explicit voucher number. Normally omit and let Tally auto-number.",
+        },
       },
       required: ["date", "sourceItem", "sourceQty", "sourceRate", "destItem", "destQty", "destRate", "unit"],
+    },
+  },
+  {
+    name: "update_stock_journal",
+    description:
+      "Update an existing Stock Journal voucher in TallyPrime, replacing its source/destination lines and " +
+      "narration. Same fields as create_stock_journal, plus voucherNumber. Matched by date + voucher number — use " +
+      "get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can " +
+      "silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the stock journal to update" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        sourceItem: { type: "string", description: "Exact name of the stock item being consumed/issued" },
+        sourceQty: { type: "number", description: "Quantity of sourceItem consumed" },
+        sourceRate: { type: "number", description: "Rate per unit of sourceItem" },
+        destItem: { type: "string", description: "Exact name of the stock item being produced/received" },
+        destQty: { type: "number", description: "Quantity of destItem produced" },
+        destRate: { type: "number", description: "Rate per unit of destItem" },
+        unit: { type: "string", description: "Unit of measure shared by both items, e.g. 'Nos'" },
+        godown: {
+          type: "string",
+          description:
+            "Godown for both legs (optional — only needed if the items have godown/location tracking enabled).",
+        },
+      },
+      required: ["date", "voucherNumber", "sourceItem", "sourceQty", "sourceRate", "destItem", "destQty", "destRate", "unit"],
+    },
+  },
+  {
+    name: "create_physical_stock",
+    description:
+      "Create a Physical Stock voucher in TallyPrime — records the actual counted quantity of one or more stock " +
+      "items from a physical verification, so Tally can show the shortage/excess variance against book stock in " +
+      "stock reports. Inventory-only, zero value/amount — it does not post any accounting adjustment for the " +
+      "variance (do that separately with create_voucher/create_stock_journal if you need to write off the " +
+      "difference). EXTRAPOLATED from Tally's documented Physical Stock XML schema, not reverse-engineered from a " +
+      "real manually-created example — verify carefully after use.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Physical count date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        items: {
+          type: "array",
+          description: "One entry per counted stock item.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item counted" },
+              actualQty: { type: "number", description: "Actual counted quantity" },
+              unit: { type: "string" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Defaults to 'Primary Batch' if the item is batch-tracked." },
+            },
+            required: ["stockItem", "actualQty", "unit"],
+          },
+        },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types). If " +
+            "creation fails with a blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this " +
+            "voucher type and retry with voucherNumber set to the next one.",
+        },
+      },
+      required: ["date", "items"],
+    },
+  },
+  {
+    name: "update_physical_stock",
+    description:
+      "Update an existing Physical Stock voucher in TallyPrime, replacing its counted item lines and narration. " +
+      "Same fields as create_physical_stock, plus voucherNumber. Matched by date + voucher number — use " +
+      "get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can " +
+      "silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the physical stock voucher to update" },
+        narration: { type: "string", description: "Narration / description" },
+        items: {
+          type: "array",
+          description: "One entry per counted stock item — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item counted" },
+              actualQty: { type: "number", description: "Actual counted quantity" },
+              unit: { type: "string" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Defaults to 'Primary Batch' if the item is batch-tracked." },
+            },
+            required: ["stockItem", "actualQty", "unit"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "items"],
     },
   },
   {
@@ -369,19 +477,75 @@ export const tools = [
                   "omitting this fails silently (CREATED:0, EXCEPTIONS:1, no error text) even though everything else is valid. " +
                   "Confirmed by live testing. Check get_company_info or an existing invoice first if unsure.",
               },
+              batchName: { type: "string", description: "Real batch/lot number for this line, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount (e.g. 10 for 10% off). Optional." },
+              vatLedger: { type: "string", description: "Per-item VAT ledger override, if this line has a different tax rate than the invoice default. Requires vatRatePercent." },
+              vatRatePercent: { type: "number", description: "Per-item VAT rate override, e.g. 5. Required if this item's vatLedger is set." },
             },
             required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
           },
         },
-        vatLedger: { type: "string", description: "VAT/tax ledger to apply against the invoice total (optional — omit for a non-taxable invoice)." },
-        vatRatePercent: { type: "number", description: "VAT rate as a percentage, e.g. 5. Required if vatLedger is set." },
+        vatLedger: { type: "string", description: "Default VAT/tax ledger applied to any item that doesn't set its own vatLedger (optional — omit for a fully non-taxable invoice)." },
+        vatRatePercent: { type: "number", description: "Default VAT rate as a percentage, e.g. 5. Required if vatLedger is set. Items with mixed rates can override this per-line." },
         billName: {
           type: "string",
           description: "Bill reference name for bill-wise tracking (requires the party ledger's maintainBillWise to be on). Omit if not using bill-wise tracking.",
         },
         billType: { type: "string", description: "Defaults to 'New Ref'." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit this and let Tally auto-number — but some Tally configurations " +
+            "(confirmed live: after a Company Data → Rewrite in at least one case) stop auto-numbering item-invoice " +
+            "vouchers via the XML gateway and fail with a blank EXCEPTIONS:1/no error text unless a number is given " +
+            "explicitly. If a create call fails with no error text, check get_vouchers for the highest existing " +
+            "number of this voucher type and retry with voucherNumber set to the next one.",
+        },
       },
       required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "update_sales_invoice",
+    description:
+      "Update an existing item-invoice Sales voucher in TallyPrime, replacing its item lines, party, and narration. " +
+      "Same fields as create_sales_invoice, plus voucherNumber. Matched by date + voucher number — use " +
+      "get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can " +
+      "silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        voucherNumber: { type: "string", description: "Exact voucher number of the invoice to update" },
+        date: { type: "string", description: "Existing invoice's date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "New narration / description for the invoice" },
+        partyLedger: { type: "string", description: "Customer ledger name (the party being invoiced)" },
+        items: {
+          type: "array",
+          description: "One entry per invoice line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string" },
+              qty: { type: "number" },
+              rate: { type: "number" },
+              unit: { type: "string" },
+              salesLedger: { type: "string" },
+              godown: { type: "string" },
+              batchName: { type: "string" },
+              discountPercent: { type: "number" },
+              vatLedger: { type: "string" },
+              vatRatePercent: { type: "number" },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+          },
+        },
+        vatLedger: { type: "string", description: "Default VAT ledger for items without their own override." },
+        vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
+        billName: { type: "string" },
+        billType: { type: "string" },
+      },
+      required: ["voucherNumber", "date", "partyLedger", "items"],
     },
   },
   {
@@ -417,34 +581,357 @@ export const tools = [
                   "omitting this fails silently (CREATED:0, EXCEPTIONS:1, no error text) even though everything else is valid. " +
                   "Confirmed by live testing. Check get_company_info or an existing invoice first if unsure.",
               },
+              batchName: { type: "string", description: "Real batch/lot number for this line, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount (e.g. 10 for 10% off). Optional." },
+              vatLedger: { type: "string", description: "Per-item VAT ledger override, if this line has a different tax rate than the invoice default. Requires vatRatePercent." },
+              vatRatePercent: { type: "number", description: "Per-item VAT rate override, e.g. 5. Required if this item's vatLedger is set." },
             },
             required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
           },
         },
-        vatLedger: { type: "string", description: "Input VAT/tax ledger to apply against the invoice total (optional — omit for a non-taxable invoice)." },
-        vatRatePercent: { type: "number", description: "VAT rate as a percentage, e.g. 5. Required if vatLedger is set." },
+        vatLedger: { type: "string", description: "Default Input VAT ledger applied to any item that doesn't set its own vatLedger (optional — omit for a fully non-taxable invoice)." },
+        vatRatePercent: { type: "number", description: "Default VAT rate as a percentage, e.g. 5. Required if vatLedger is set. Items with mixed rates can override this per-line." },
         billName: {
           type: "string",
           description: "Bill reference name for bill-wise tracking (requires the party ledger's maintainBillWise to be on). Omit if not using bill-wise tracking.",
         },
         billType: { type: "string", description: "Defaults to 'New Ref'." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit this and let Tally auto-number — but some Tally configurations " +
+            "(confirmed live: after a Company Data → Rewrite in at least one case) stop auto-numbering item-invoice " +
+            "vouchers via the XML gateway and fail with a blank EXCEPTIONS:1/no error text unless a number is given " +
+            "explicitly. If a create call fails with no error text, check get_vouchers for the highest existing " +
+            "number of this voucher type and retry with voucherNumber set to the next one.",
+        },
       },
       required: ["date", "partyLedger", "items"],
     },
   },
   {
-    name: "create_group",
-    description: "Create a new account group in TallyPrime, nested under a parent group",
+    name: "update_purchase_invoice",
+    description:
+      "Update an existing item-invoice Purchase voucher in TallyPrime, replacing its item lines, party, and " +
+      "narration. Same fields as create_purchase_invoice, plus voucherNumber. Matched by date + voucher number — " +
+      "use get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can " +
+      "silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Name of the new group" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the invoice to update" },
+        date: { type: "string", description: "Existing invoice's date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "New narration / description for the invoice" },
+        partyLedger: { type: "string", description: "Supplier ledger name (the party being paid)" },
+        items: {
+          type: "array",
+          description: "One entry per invoice line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string" },
+              qty: { type: "number" },
+              rate: { type: "number" },
+              unit: { type: "string" },
+              purchaseLedger: { type: "string" },
+              godown: { type: "string" },
+              batchName: { type: "string" },
+              discountPercent: { type: "number" },
+              vatLedger: { type: "string" },
+              vatRatePercent: { type: "number" },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
+          },
+        },
+        vatLedger: { type: "string", description: "Default VAT ledger for items without their own override." },
+        vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
+        billName: { type: "string" },
+        billType: { type: "string" },
+      },
+      required: ["voucherNumber", "date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "create_credit_note",
+    description:
+      "Create an item-invoice Credit Note in TallyPrime — a Sales return, reversing stock and revenue for returned " +
+      "items. Same shape as create_sales_invoice but with the debit/credit convention flipped, matching Purchase's " +
+      "sign pattern (a Credit Note is structurally a reverse Sales entry). UNLIKE create_sales_invoice/" +
+      "create_purchase_invoice, this was extrapolated from that proven convention, not reverse-engineered from a " +
+      "real manually-created example — verify carefully after use. Same godown and dual-role deletion caveats apply.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Credit note date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name (the party being credited)" },
+        items: {
+          type: "array",
+          description: "One entry per returned line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              qty: { type: "number", description: "Quantity returned" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string" },
+              salesLedger: { type: "string", description: "Sales/Sales Returns ledger this line is reversed against, e.g. the same ledger used on the original invoice" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              batchName: { type: "string" },
+              discountPercent: { type: "number" },
+              vatLedger: { type: "string" },
+              vatRatePercent: { type: "number" },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+          },
+        },
+        vatLedger: { type: "string", description: "Default VAT ledger for items without their own override." },
+        vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
+        billName: { type: "string", description: "Bill reference to settle against, e.g. the original invoice's bill name. Defaults to 'Agst Ref' billType." },
+        billType: { type: "string", description: "Defaults to 'Agst Ref' — settling against the original invoice's bill, unlike create_sales_invoice's 'New Ref' default." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering item-invoice vouchers via the XML gateway (confirmed live). If creation fails with a " +
+            "blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this voucher type and retry " +
+            "with voucherNumber set to the next one.",
+        },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "update_credit_note",
+    description:
+      "Update an existing item-invoice Credit Note in TallyPrime, replacing its item lines, party, and narration. " +
+      "Same fields as create_credit_note, plus voucherNumber. Matched by date + voucher number — use " +
+      "get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can " +
+      "silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing credit note's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the credit note to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name (the party being credited)" },
+        items: {
+          type: "array",
+          description: "One entry per returned line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              qty: { type: "number", description: "Quantity returned" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string" },
+              salesLedger: { type: "string", description: "Sales/Sales Returns ledger this line is reversed against, e.g. the same ledger used on the original invoice" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              batchName: { type: "string" },
+              discountPercent: { type: "number" },
+              vatLedger: { type: "string" },
+              vatRatePercent: { type: "number" },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+          },
+        },
+        vatLedger: { type: "string", description: "Default VAT ledger for items without their own override." },
+        vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
+        billName: { type: "string", description: "Bill reference to settle against, e.g. the original invoice's bill name. Defaults to 'Agst Ref' billType." },
+        billType: { type: "string", description: "Defaults to 'Agst Ref' — settling against the original invoice's bill, unlike create_sales_invoice's 'New Ref' default." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "create_debit_note",
+    description:
+      "Create an item-invoice Debit Note in TallyPrime — a Purchase return, reversing stock and expense for " +
+      "returned items. Same shape as create_purchase_invoice but with the debit/credit convention flipped, " +
+      "matching Sales's sign pattern (a Debit Note is structurally a reverse Purchase entry). UNLIKE " +
+      "create_sales_invoice/create_purchase_invoice, this was extrapolated from that proven convention, not " +
+      "reverse-engineered from a real manually-created example — verify carefully after use. Same godown and " +
+      "dual-role deletion caveats apply.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Debit note date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Supplier ledger name (the party being debited)" },
+        items: {
+          type: "array",
+          description: "One entry per returned line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              qty: { type: "number", description: "Quantity returned" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string" },
+              purchaseLedger: { type: "string", description: "Purchase/Purchase Returns ledger this line is reversed against" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_purchase_invoice)." },
+              batchName: { type: "string" },
+              discountPercent: { type: "number" },
+              vatLedger: { type: "string" },
+              vatRatePercent: { type: "number" },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
+          },
+        },
+        vatLedger: { type: "string", description: "Default VAT ledger for items without their own override." },
+        vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
+        billName: { type: "string", description: "Bill reference to settle against, e.g. the original bill's name. Defaults to 'Agst Ref' billType." },
+        billType: { type: "string", description: "Defaults to 'Agst Ref' — settling against the original purchase's bill, unlike create_purchase_invoice's 'New Ref' default." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering item-invoice vouchers via the XML gateway (confirmed live). If creation fails with a " +
+            "blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this voucher type and retry " +
+            "with voucherNumber set to the next one.",
+        },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "update_debit_note",
+    description:
+      "Update an existing item-invoice Debit Note in TallyPrime, replacing its item lines, party, and narration. " +
+      "Same fields as create_debit_note, plus voucherNumber. Matched by date + voucher number — use " +
+      "get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can " +
+      "silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing debit note's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the debit note to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Supplier ledger name (the party being debited)" },
+        items: {
+          type: "array",
+          description: "One entry per returned line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              qty: { type: "number", description: "Quantity returned" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string" },
+              purchaseLedger: { type: "string", description: "Purchase/Purchase Returns ledger this line is reversed against" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_purchase_invoice)." },
+              batchName: { type: "string" },
+              discountPercent: { type: "number" },
+              vatLedger: { type: "string" },
+              vatRatePercent: { type: "number" },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
+          },
+        },
+        vatLedger: { type: "string", description: "Default VAT ledger for items without their own override." },
+        vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
+        billName: { type: "string", description: "Bill reference to settle against, e.g. the original bill's name. Defaults to 'Agst Ref' billType." },
+        billType: { type: "string", description: "Defaults to 'Agst Ref' — settling against the original purchase's bill, unlike create_purchase_invoice's 'New Ref' default." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "create_group",
+    description:
+      "Create a new account group in TallyPrime, nested under a parent group, or rename/reparent an existing one " +
+      "by passing oldName.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the group (the new name, if renaming)" },
+        oldName: { type: "string", description: "Existing group's current name — pass this to rename/reparent instead of creating a new group." },
         parent: {
           type: "string",
           description: "Parent group, e.g. 'Primary', 'Current Assets'",
         },
       },
       required: ["name", "parent"],
+    },
+  },
+  {
+    name: "create_stock_group",
+    description:
+      "Create a new Stock Group in TallyPrime, nested under a parent stock group. Distinct from create_group " +
+      "(account groups like Sundry Debtors) — this is the category stock items are filed under (create_stock_item's " +
+      "'group' field). Required before creating a stock item under a brand-new category that doesn't exist yet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the new stock group" },
+        parent: { type: "string", description: "Parent stock group, e.g. 'Primary'" },
+      },
+      required: ["name", "parent"],
+    },
+  },
+  {
+    name: "create_unit",
+    description:
+      "Create a new simple Unit of Measure in TallyPrime (e.g. 'Kg', 'Box', 'Ltr'). Required before creating or " +
+      "invoicing a stock item in a unit that doesn't exist yet — stock item/invoice tools fail with 'Unit does not " +
+      "exist!' otherwise. Only covers simple units, not compound units (e.g. 'Box of 12 Nos').",
+    inputSchema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "The unit symbol as referenced elsewhere, e.g. 'Kg', 'Box', 'Nos'" },
+        formalName: { type: "string", description: "Full name, e.g. 'Kilograms'. Optional." },
+        decimalPlaces: { type: "number", description: "Decimal precision for quantities in this unit. Defaults to 0 (whole numbers only, e.g. 'Nos')." },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "create_godown",
+    description:
+      "Create a new Godown/Location in TallyPrime, optionally nested under a parent godown (e.g. a sub-location " +
+      "under a main warehouse). Required before referencing a godown that doesn't exist yet on an invoice/voucher " +
+      "line — those fail with 'Godown does not exist!' otherwise. Pass the parent's plain name, not a dotted path " +
+      "(confirmed live: 'MAIN LOCATION.DUBAI' is invalid, 'MAIN LOCATION' as parent + 'DUBAI' as name is correct).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the new godown" },
+        parent: { type: "string", description: "Parent godown name, if nesting under an existing one. Omit for a top-level godown." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "create_cost_category",
+    description:
+      "Create a new Cost Category in TallyPrime (a grouping of cost centres, e.g. 'Branch', 'Project'). Required " +
+      "before creating a cost centre under a category that doesn't exist yet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the new cost category" },
+        allocateToRevenue: { type: "boolean", description: "Allow allocation to revenue items. Defaults to true." },
+        allocateToNonRevenue: { type: "boolean", description: "Allow allocation to non-revenue (balance sheet) items. Defaults to true." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "create_cost_centre",
+    description:
+      "Create a new Cost Centre in TallyPrime (e.g. a department, branch, or project used to tag voucher entries " +
+      "for cost tracking — see create_voucher's costCentre fields).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the new cost centre" },
+        category: { type: "string", description: "Cost category this belongs to. Defaults to 'Primary Cost Category' if omitted." },
+        parent: { type: "string", description: "Parent cost centre, if nesting under an existing one." },
+      },
+      required: ["name"],
     },
   },
   {
@@ -479,15 +966,23 @@ export const tools = [
   },
   {
     name: "update_stock_item",
-    description: "Update the group and/or unit of an existing stock item in TallyPrime",
+    description: "Update an existing stock item in TallyPrime — same fields as create_stock_item, all optional except name.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", description: "Exact name of the existing stock item" },
         group: { type: "string", description: "New stock group" },
         unit: { type: "string", description: "New unit of measure" },
+        description: { type: "string", description: "Free-text description of the item." },
+        rateOfVat: { type: "number", description: "VAT rate percentage for this item, e.g. 5." },
+        ignoreNegativeStock: { type: "boolean", description: "Allow this item's stock to go negative without a warning/block." },
+        extraFields: {
+          type: "object",
+          description: "Escape hatch for any other native Tally stock item field, same as on create_stock_item.",
+          additionalProperties: { type: "string" },
+        },
       },
-      required: ["name", "group", "unit"],
+      required: ["name"],
     },
   },
   {
@@ -511,7 +1006,11 @@ export const tools = [
     description:
       "Update an existing voucher in TallyPrime, replacing its ledger entries and narration. " +
       "The voucher is matched by type + date + voucher number, so that combination must be unique " +
-      "and must exactly match an existing voucher (use get_ledger_vouchers or get_vouchers first to confirm it).",
+      "and must exactly match an existing voucher (use get_ledger_vouchers or get_vouchers first to confirm it). " +
+      "Either pass debitLedger/creditLedger/amount for a simple 2-leg voucher, or pass 'entries' for 3+ lines, " +
+      "same as create_voucher. Refuses if another voucher type shares the same number on that date (confirmed " +
+      "live: Tally's Alter lookup ignores voucher type and can silently corrupt the wrong one) — resolve the " +
+      "collision in Tally first if that happens.",
     inputSchema: {
       type: "object",
       properties: {
@@ -519,17 +1018,37 @@ export const tools = [
         voucherNumber: { type: "string", description: "Exact voucher number of the voucher to update" },
         date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
         narration: { type: "string", description: "New narration / description for the voucher" },
-        debitLedger: { type: "string", description: "Ledger name to debit" },
-        creditLedger: { type: "string", description: "Ledger name to credit" },
-        amount: { type: "number", description: "New amount of the transaction" },
+        debitLedger: { type: "string", description: "Ledger name to debit (simple 2-leg mode; omit if using 'entries')" },
+        creditLedger: { type: "string", description: "Ledger name to credit (simple 2-leg mode; omit if using 'entries')" },
+        amount: { type: "number", description: "New amount of the transaction (simple 2-leg mode; omit if using 'entries')" },
         debitCostCentre: { type: "string", description: "Cost centre to allocate the debit leg to (optional)." },
         creditCostCentre: { type: "string", description: "Cost centre to allocate the credit leg to (optional)." },
         costCategory: {
           type: "string",
           description: "Cost category the cost centre belongs to. Defaults to 'Primary Cost Category'.",
         },
+        entries: {
+          type: "array",
+          description:
+            "For a voucher with more than 2 lines: an array of { ledgerName, amount, type: 'debit'|'credit', " +
+            "billName?, billType?, costCentre?, costCategory? }, same shape as create_voucher's entries. Debit and " +
+            "credit amounts must sum to the same total. When provided, this replaces debitLedger/creditLedger/amount.",
+          items: {
+            type: "object",
+            properties: {
+              ledgerName: { type: "string" },
+              amount: { type: "number" },
+              type: { type: "string", enum: ["debit", "credit"] },
+              billName: { type: "string" },
+              billType: { type: "string" },
+              costCentre: { type: "string" },
+              costCategory: { type: "string" },
+            },
+            required: ["ledgerName", "amount", "type"],
+          },
+        },
       },
-      required: ["voucherType", "voucherNumber", "date", "debitLedger", "creditLedger", "amount"],
+      required: ["voucherType", "voucherNumber", "date"],
     },
   },
   {
@@ -538,7 +1057,9 @@ export const tools = [
       "Permanently delete an existing voucher from TallyPrime — removes it entirely with no trace " +
       "(distinct from cancelling, which keeps it visible but marked Cancelled). The voucher is matched " +
       "by type + date + voucher number, so that combination must be unique and must exactly match an " +
-      "existing voucher (use get_ledger_vouchers or get_vouchers first to confirm it). This has no undo.",
+      "existing voucher (use get_ledger_vouchers or get_vouchers first to confirm it). This has no undo. " +
+      "Refuses if another voucher type shares the same number on that date (confirmed live: Tally's lookup " +
+      "ignores voucher type and can silently target the wrong one) — resolve the collision in Tally first.",
     inputSchema: {
       type: "object",
       properties: {
@@ -552,8 +1073,9 @@ export const tools = [
   {
     name: "sync_to_sql",
     description:
-      "Pull ledgers, groups, stock items, and vouchers (last 365 days) from TallyPrime into a local " +
-      "in-memory SQL cache, so query_sql can run fast arbitrary queries without hitting Tally each time",
+      "Pull ledgers, groups, and stock items from TallyPrime into a local in-memory SQL cache, so query_sql can run " +
+      "fast arbitrary queries without hitting Tally each time. Does NOT sync vouchers — use get_vouchers/" +
+      "get_ledger_vouchers per date range for those (Tally's Day Book export doesn't page well for bulk historical sync).",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -561,7 +1083,7 @@ export const tools = [
     description:
       "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql. " +
       "Tables: ledgers(name, parent, closing_balance), groups(name, parent), " +
-      "stock_items(name, parent, closing_balance), vouchers(date, voucher_type, ledger, amount, narration)",
+      "stock_items(name, parent, closing_balance). There is no vouchers table — voucher data is not cached here.",
     inputSchema: {
       type: "object",
       properties: {
@@ -734,10 +1256,33 @@ function createStockJournalXml(args: {
   destRate: number;
   unit: string;
   godown?: string;
+  voucherNumber?: string;
 }): string {
-  const { date, narration, sourceItem, sourceQty, sourceRate, destItem, destQty, destRate, unit, godown } = args;
+  const { date, narration, sourceItem, sourceQty, sourceRate, destItem, destQty, destRate, unit, godown, voucherNumber } = args;
   return render("create-stock-journal.xml.njk", {
     tallyDate: date.split("-").reverse().join(""),
+    narration: narration ?? "",
+    sourceItem,
+    sourceQty,
+    sourceRate,
+    sourceAmount: sourceQty * sourceRate,
+    destItem,
+    destQty,
+    destRate,
+    destAmount: destQty * destRate,
+    unit,
+    godown,
+    voucherNumber,
+  });
+}
+
+function updateStockJournalXml(
+  args: Parameters<typeof createStockJournalXml>[0] & { voucherNumber: string }
+): string {
+  const { date, narration, sourceItem, sourceQty, sourceRate, destItem, destQty, destRate, unit, godown, voucherNumber } = args;
+  return render("update-stock-journal.xml.njk", {
+    tallyDate: date.split("-").reverse().join(""),
+    voucherNumber,
     narration: narration ?? "",
     sourceItem,
     sourceQty,
@@ -752,38 +1297,119 @@ function createStockJournalXml(args: {
   });
 }
 
+type PhysicalStockItemInput = {
+  stockItem: string;
+  actualQty: number;
+  unit: string;
+  godown?: string;
+  batchName?: string;
+};
+
+function createPhysicalStockXml(args: {
+  date: string;
+  narration?: string;
+  items: PhysicalStockItemInput[];
+  voucherNumber?: string;
+}): string {
+  return render("create-physical-stock.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    items: args.items.map((item) => ({ ...item, batchName: item.batchName ?? "Primary Batch" })),
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function updatePhysicalStockXml(
+  args: Parameters<typeof createPhysicalStockXml>[0] & { voucherNumber: string }
+): string {
+  return render("update-physical-stock.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    items: args.items.map((item) => ({ ...item, batchName: item.batchName ?? "Primary Batch" })),
+  });
+}
+
+type InvoiceItemInput = {
+  stockItem: string;
+  qty: number;
+  rate: number;
+  unit: string;
+  godown?: string;
+  batchName?: string;
+  discountPercent?: number;
+  vatLedger?: string;
+  vatRatePercent?: number;
+};
+
+function computeInvoiceLines(
+  items: InvoiceItemInput[],
+  defaultVatLedger: string | undefined,
+  defaultVatRatePercent: number | undefined
+) {
+  for (const item of items) {
+    if (item.vatLedger && item.vatRatePercent === undefined) {
+      throw new Error(`Item '${item.stockItem}': vatRatePercent is required when vatLedger is set on an item.`);
+    }
+  }
+  if (defaultVatLedger && defaultVatRatePercent === undefined) {
+    throw new Error("vatRatePercent is required when vatLedger is set.");
+  }
+
+  const computedItems = items.map((item) => {
+    const gross = item.qty * item.rate;
+    const discounted = item.discountPercent ? gross * (1 - item.discountPercent / 100) : gross;
+    return {
+      ...item,
+      amount: Math.round(discounted * 100) / 100,
+      batchName: item.batchName ?? "Primary Batch",
+    };
+  });
+  const netTotal = computedItems.reduce((s, i) => s + i.amount, 0);
+
+  const groups = new Map<string, { vatLedger: string; vatRatePercent: number; netAmount: number }>();
+  for (const item of computedItems) {
+    const ledger = item.vatLedger ?? defaultVatLedger;
+    const rate = item.vatRatePercent ?? defaultVatRatePercent;
+    if (!ledger) continue;
+    const key = `${ledger}::${rate}`;
+    const g = groups.get(key) ?? { vatLedger: ledger, vatRatePercent: rate!, netAmount: 0 };
+    g.netAmount += item.amount;
+    groups.set(key, g);
+  }
+  const taxGroups = [...groups.values()].map((g) => ({
+    vatLedger: g.vatLedger,
+    vatRatePercent: g.vatRatePercent,
+    vatAmount: Math.round(g.netAmount * (g.vatRatePercent / 100) * 100) / 100,
+  }));
+  const totalVat = taxGroups.reduce((s, g) => s + g.vatAmount, 0);
+  const partyAmount = Math.round((netTotal + totalVat) * 100) / 100;
+
+  return { items: computedItems, taxGroups, partyAmount };
+}
+
 function createSalesInvoiceXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
-  items: { stockItem: string; qty: number; rate: number; unit: string; salesLedger: string; godown?: string }[];
+  items: (InvoiceItemInput & { salesLedger: string })[];
   vatLedger?: string;
   vatRatePercent?: number;
   billName?: string;
   billType?: string;
+  voucherNumber?: string;
 }): string {
-  if (args.vatLedger && args.vatRatePercent === undefined) {
-    throw new Error("create_sales_invoice: vatRatePercent is required when vatLedger is set.");
-  }
-  const items = args.items.map((item) => ({
-    ...item,
-    amount: Math.round(item.qty * item.rate * 100) / 100,
-  }));
-  const netTotal = items.reduce((s, i) => s + i.amount, 0);
-  const vatAmount = args.vatLedger ? Math.round(netTotal * (args.vatRatePercent! / 100) * 100) / 100 : 0;
-  const partyAmount = Math.round((netTotal + vatAmount) * 100) / 100;
-
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-sales-invoice.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
     items,
     partyAmount,
-    vatLedger: args.vatLedger,
-    vatRatePercent: args.vatRatePercent,
-    vatAmount,
+    taxGroups,
     billName: args.billName,
     billType: args.billType ?? "New Ref",
+    voucherNumber: args.voucherNumber,
   });
 }
 
@@ -791,34 +1417,142 @@ function createPurchaseInvoiceXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
-  items: { stockItem: string; qty: number; rate: number; unit: string; purchaseLedger: string; godown?: string }[];
+  items: (InvoiceItemInput & { purchaseLedger: string })[];
   vatLedger?: string;
   vatRatePercent?: number;
   billName?: string;
   billType?: string;
+  voucherNumber?: string;
 }): string {
-  if (args.vatLedger && args.vatRatePercent === undefined) {
-    throw new Error("create_purchase_invoice: vatRatePercent is required when vatLedger is set.");
-  }
-  const items = args.items.map((item) => ({
-    ...item,
-    amount: Math.round(item.qty * item.rate * 100) / 100,
-  }));
-  const netTotal = items.reduce((s, i) => s + i.amount, 0);
-  const vatAmount = args.vatLedger ? Math.round(netTotal * (args.vatRatePercent! / 100) * 100) / 100 : 0;
-  const partyAmount = Math.round((netTotal + vatAmount) * 100) / 100;
-
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-purchase-invoice.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
     items,
     partyAmount,
-    vatLedger: args.vatLedger,
-    vatRatePercent: args.vatRatePercent,
-    vatAmount,
+    taxGroups,
     billName: args.billName,
     billType: args.billType ?? "New Ref",
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createCreditNoteXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (InvoiceItemInput & { salesLedger: string })[];
+  vatLedger?: string;
+  vatRatePercent?: number;
+  billName?: string;
+  billType?: string;
+  voucherNumber?: string;
+}): string {
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  return render("create-credit-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    taxGroups,
+    billName: args.billName,
+    billType: args.billType ?? "Agst Ref",
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createDebitNoteXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (InvoiceItemInput & { purchaseLedger: string })[];
+  vatLedger?: string;
+  vatRatePercent?: number;
+  billName?: string;
+  billType?: string;
+  voucherNumber?: string;
+}): string {
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  return render("create-debit-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    taxGroups,
+    billName: args.billName,
+    billType: args.billType ?? "Agst Ref",
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function updateSalesInvoiceXml(
+  args: Parameters<typeof createSalesInvoiceXml>[0] & { voucherNumber: string }
+): string {
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  return render("update-sales-invoice.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    taxGroups,
+    billName: args.billName,
+    billType: args.billType ?? "New Ref",
+  });
+}
+
+function updatePurchaseInvoiceXml(
+  args: Parameters<typeof createPurchaseInvoiceXml>[0] & { voucherNumber: string }
+): string {
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  return render("update-purchase-invoice.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    taxGroups,
+    billName: args.billName,
+    billType: args.billType ?? "New Ref",
+  });
+}
+
+function updateCreditNoteXml(
+  args: Parameters<typeof createCreditNoteXml>[0] & { voucherNumber: string }
+): string {
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  return render("update-credit-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    taxGroups,
+    billName: args.billName,
+    billType: args.billType ?? "Agst Ref",
+  });
+}
+
+function updateDebitNoteXml(
+  args: Parameters<typeof createDebitNoteXml>[0] & { voucherNumber: string }
+): string {
+  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  return render("update-debit-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    taxGroups,
+    billName: args.billName,
+    billType: args.billType ?? "Agst Ref",
   });
 }
 
@@ -830,15 +1564,50 @@ function normalizeParent(parent: string): string {
   return parent.trim().toLowerCase() === "primary" ? "" : parent;
 }
 
-function createGroupXml(name: string, parent: string): string {
-  return render("create-group.xml.njk", { name, parent: normalizeParent(parent) });
+function createGroupXml(name: string, parent: string, oldName?: string): string {
+  return render("create-group.xml.njk", { name, parent: normalizeParent(parent), oldName });
 }
 
-function updateStockItemXml(name: string, group?: string, unit?: string): string {
+function createStockGroupXml(name: string, parent: string): string {
+  return render("create-stock-group.xml.njk", { name, parent: normalizeParent(parent) });
+}
+
+function createUnitXml(args: { symbol: string; formalName?: string; decimalPlaces?: number }): string {
+  return render("create-unit.xml.njk", {
+    symbol: args.symbol,
+    formalName: args.formalName,
+    decimalPlaces: args.decimalPlaces ?? 0,
+  });
+}
+
+function createGodownXml(name: string, parent?: string): string {
+  return render("create-godown.xml.njk", { name, parent: parent ? normalizeParent(parent) : undefined });
+}
+
+function createCostCategoryXml(args: { name: string; allocateToRevenue?: boolean; allocateToNonRevenue?: boolean }): string {
+  return render("create-cost-category.xml.njk", {
+    name: args.name,
+    allocateToRevenue: args.allocateToRevenue ?? true,
+    allocateToNonRevenue: args.allocateToNonRevenue ?? true,
+  });
+}
+
+function createCostCentreXml(args: { name: string; category?: string; parent?: string }): string {
+  return render("create-cost-centre.xml.njk", args);
+}
+
+function updateStockItemXml(args: {
+  name: string;
+  group?: string;
+  unit?: string;
+  description?: string;
+  rateOfVat?: number;
+  ignoreNegativeStock?: boolean;
+  extraFields?: Record<string, string>;
+}): string {
   return render("update-stock-item.xml.njk", {
-    name,
-    group: group ? normalizeParent(group) : undefined,
-    unit,
+    ...args,
+    group: args.group ? normalizeParent(args.group) : undefined,
   });
 }
 
@@ -856,36 +1625,21 @@ function updateVoucherXml(args: {
   voucherNumber: string;
   date: string;
   narration?: string;
-  debitLedger: string;
-  creditLedger: string;
-  amount: number;
+  debitLedger?: string;
+  creditLedger?: string;
+  amount?: number;
   debitCostCentre?: string;
   creditCostCentre?: string;
   costCategory?: string;
+  entries?: VoucherEntryInput[];
 }): string {
-  const {
-    voucherType,
-    voucherNumber,
-    date,
-    narration,
-    debitLedger,
-    creditLedger,
-    amount,
-    debitCostCentre,
-    creditCostCentre,
-    costCategory,
-  } = args;
+  const entries = buildVoucherEntries(args);
   return render("update-voucher.xml.njk", {
-    voucherType,
-    voucherNumber,
-    tallyDate: date.split("-").reverse().join(""),
-    narration: narration ?? "",
-    debitLedger,
-    creditLedger,
-    amount,
-    debitCostCentre,
-    creditCostCentre,
-    costCategory: costCategory ?? "Primary Cost Category",
+    voucherType: args.voucherType,
+    voucherNumber: args.voucherNumber,
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    entries,
   });
 }
 
@@ -930,6 +1684,49 @@ function ledgerVouchersXml(ledgerName: string, from: string, to: string): string
     fromDate: toTallyActionDate(from),
     toDate: toTallyActionDate(to),
   });
+}
+
+function vouchersByDateXml(date: string): string {
+  const tallyDate = toTallyActionDate(date);
+  return render("vouchers-by-date.xml.njk", { fromDate: tallyDate, toDate: tallyDate });
+}
+
+// Tally's Alter/Delete lookup (TAGNAME="Voucher Number"/TAGVALUE) matches by
+// date+number ONLY — it does not scope by the VCHTYPE attribute (confirmed
+// live: altering "Purchase" #4 instead hit an unrelated pre-existing "Sales"
+// #4 on the same date, converting it to Purchase and corrupting it). Since
+// each voucher type numbers independently, the same (date, number) commonly
+// exists under more than one type. Refuse the operation whenever that's the
+// case rather than risk Tally silently picking the wrong voucher.
+async function assertVoucherUnambiguous(voucherType: string, voucherNumber: string, date: string): Promise<void> {
+  const xml = vouchersByDateXml(date);
+  const result = await tallyRequest(xml);
+  const rows = extractRecords(result) as { VOUCHER_TYPE?: string; VOUCHER_NUMBER?: string | number }[];
+  const matches = rows.filter((r) => String(r.VOUCHER_NUMBER ?? "").trim() === String(voucherNumber).trim());
+
+  if (matches.length === 0) {
+    throw new Error(
+      `No voucher numbered "${voucherNumber}" found on ${date} (any type) — check the number and date with ` +
+        `get_vouchers or get_ledger_vouchers first.`
+    );
+  }
+
+  const distinctTypes = [...new Set(matches.map((m) => m.VOUCHER_TYPE))];
+  if (distinctTypes.length > 1) {
+    throw new Error(
+      `Refusing to Alter/Delete: voucher number "${voucherNumber}" on ${date} exists under more than one voucher ` +
+        `type (${distinctTypes.join(", ")}). Tally's XML gateway does not scope this lookup by voucher type, so it ` +
+        `can silently hit the wrong one and corrupt it (confirmed live). Resolve the collision manually in Tally ` +
+        `(renumber one of them) before retrying, or edit/delete this voucher directly in Tally's UI instead.`
+    );
+  }
+
+  if (distinctTypes[0] !== voucherType) {
+    throw new Error(
+      `Voucher number "${voucherNumber}" on ${date} exists only as type "${distinctTypes[0]}", not "${voucherType}" ` +
+        `as requested — check the voucherType argument.`
+    );
+  }
 }
 
 function checkImportResult(result: unknown): string {
@@ -1251,58 +2048,133 @@ export async function handleTool(
     }
 
     case "create_sales_invoice": {
-      const invoiceArgs = args as {
-        date: string;
-        narration?: string;
-        partyLedger: string;
-        items: { stockItem: string; qty: number; rate: number; unit: string; salesLedger: string; godown?: string }[];
-        vatLedger?: string;
-        vatRatePercent?: number;
-        billName?: string;
-        billType?: string;
-      };
+      const invoiceArgs = args as Parameters<typeof createSalesInvoiceXml>[0];
       const xml = createSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
 
+    case "update_sales_invoice": {
+      const invoiceArgs = args as Parameters<typeof updateSalesInvoiceXml>[0];
+      await assertVoucherUnambiguous("Sales", invoiceArgs.voucherNumber, invoiceArgs.date);
+      const xml = updateSalesInvoiceXml(invoiceArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_purchase_invoice": {
-      const invoiceArgs = args as {
-        date: string;
-        narration?: string;
-        partyLedger: string;
-        items: { stockItem: string; qty: number; rate: number; unit: string; purchaseLedger: string; godown?: string }[];
-        vatLedger?: string;
-        vatRatePercent?: number;
-        billName?: string;
-        billType?: string;
-      };
+      const invoiceArgs = args as Parameters<typeof createPurchaseInvoiceXml>[0];
       const xml = createPurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
 
+    case "update_purchase_invoice": {
+      const invoiceArgs = args as Parameters<typeof updatePurchaseInvoiceXml>[0];
+      await assertVoucherUnambiguous("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date);
+      const xml = updatePurchaseInvoiceXml(invoiceArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_credit_note": {
+      const noteArgs = args as Parameters<typeof createCreditNoteXml>[0];
+      const xml = createCreditNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_credit_note": {
+      const noteArgs = args as Parameters<typeof updateCreditNoteXml>[0];
+      await assertVoucherUnambiguous("Credit Note", noteArgs.voucherNumber, noteArgs.date);
+      const xml = updateCreditNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_debit_note": {
+      const noteArgs = args as Parameters<typeof createDebitNoteXml>[0];
+      const xml = createDebitNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_debit_note": {
+      const noteArgs = args as Parameters<typeof updateDebitNoteXml>[0];
+      await assertVoucherUnambiguous("Debit Note", noteArgs.voucherNumber, noteArgs.date);
+      const xml = updateDebitNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_stock_journal": {
-      const stockJournalArgs = args as {
-        date: string;
-        narration?: string;
-        sourceItem: string;
-        sourceQty: number;
-        sourceRate: number;
-        destItem: string;
-        destQty: number;
-        destRate: number;
-        unit: string;
-        godown?: string;
-      };
+      const stockJournalArgs = args as Parameters<typeof createStockJournalXml>[0];
       const xml = createStockJournalXml(stockJournalArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
 
+    case "update_stock_journal": {
+      const stockJournalArgs = args as Parameters<typeof updateStockJournalXml>[0];
+      await assertVoucherUnambiguous("Stock Journal", stockJournalArgs.voucherNumber, stockJournalArgs.date);
+      const xml = updateStockJournalXml(stockJournalArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_physical_stock": {
+      const physicalStockArgs = args as Parameters<typeof createPhysicalStockXml>[0];
+      const xml = createPhysicalStockXml(physicalStockArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_physical_stock": {
+      const physicalStockArgs = args as Parameters<typeof updatePhysicalStockXml>[0];
+      await assertVoucherUnambiguous("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date);
+      const xml = updatePhysicalStockXml(physicalStockArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_group": {
-      const { name: groupName, parent } = args as { name: string; parent: string };
-      const xml = createGroupXml(groupName, parent);
+      const { name: groupName, oldName, parent } = args as { name: string; oldName?: string; parent: string };
+      const xml = createGroupXml(groupName, parent, oldName);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_stock_group": {
+      const { name: stockGroupName, parent } = args as { name: string; parent: string };
+      const xml = createStockGroupXml(stockGroupName, parent);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_unit": {
+      const unitArgs = args as Parameters<typeof createUnitXml>[0];
+      const xml = createUnitXml(unitArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_godown": {
+      const { name: godownName, parent } = args as { name: string; parent?: string };
+      const xml = createGodownXml(godownName, parent);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_cost_category": {
+      const costCategoryArgs = args as Parameters<typeof createCostCategoryXml>[0];
+      const xml = createCostCategoryXml(costCategoryArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_cost_centre": {
+      const costCentreArgs = args as Parameters<typeof createCostCentreXml>[0];
+      const xml = createCostCentreXml(costCentreArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
@@ -1345,8 +2217,16 @@ export async function handleTool(
     }
 
     case "update_stock_item": {
-      const { name: itemName, group, unit } = args as { name: string; group?: string; unit?: string };
-      const xml = updateStockItemXml(itemName, group, unit);
+      const updateItemArgs = args as {
+        name: string;
+        group?: string;
+        unit?: string;
+        description?: string;
+        rateOfVat?: number;
+        ignoreNegativeStock?: boolean;
+        extraFields?: Record<string, string>;
+      };
+      const xml = updateStockItemXml(updateItemArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
@@ -1364,13 +2244,15 @@ export async function handleTool(
         voucherNumber: string;
         date: string;
         narration?: string;
-        debitLedger: string;
-        creditLedger: string;
-        amount: number;
+        debitLedger?: string;
+        creditLedger?: string;
+        amount?: number;
         debitCostCentre?: string;
         creditCostCentre?: string;
         costCategory?: string;
+        entries?: VoucherEntryInput[];
       };
+      await assertVoucherUnambiguous(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date);
       const xml = updateVoucherXml(voucherArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
@@ -1382,6 +2264,7 @@ export async function handleTool(
         voucherNumber: string;
         date: string;
       };
+      await assertVoucherUnambiguous(voucherType, voucherNumber, date);
       const xml = deleteVoucherXml(voucherType, voucherNumber, date);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
