@@ -1,0 +1,44 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          {% if oldName %}
+          <LEDGER NAME="{{ oldName }}" ACTION="Alter">
+          {% else %}
+          <LEDGER NAME="{{ name }}" ACTION="Create">
+          {% endif %}
+            <NAME>{{ name }}</NAME>
+            {% if parent %}<PARENT>{{ parent }}</PARENT>{% endif %}
+            {% if openingBalance is not undefined %}<OPENINGBALANCE>{{ openingBalance }}</OPENINGBALANCE>{% endif %}
+            {% if maintainBillWise %}<ISBILLWISEON>Yes</ISBILLWISEON>{% endif %}
+            {% if trn %}<VATTINNUMBER>{{ trn }}</VATTINNUMBER>{% endif %}
+            {% if email %}<EMAIL>{{ email }}</EMAIL>{% endif %}
+            {% if website %}<WEBSITE>{{ website }}</WEBSITE>{% endif %}
+            {% if phone %}<LEDGERPHONE>{{ phone }}</LEDGERPHONE>{% endif %}
+            {% if mobile %}<LEDGERMOBILE>{{ mobile }}</LEDGERMOBILE>{% endif %}
+            {% if billCreditPeriod is not undefined %}<BILLCREDITPERIOD>{{ billCreditPeriod }}</BILLCREDITPERIOD>{% endif %}
+            {% if creditLimit is not undefined %}<CREDITLIMIT>{{ creditLimit }}</CREDITLIMIT><OVERRIDECREDITLIMIT>Yes</OVERRIDECREDITLIMIT>{% endif %}
+            {% if address or state or country or pincode or mailingName %}<LEDMAILINGDETAILS.LIST>
+              {% if address %}<ADDRESS.LIST TYPE="String">
+                {% for line in address %}<ADDRESS>{{ line }}</ADDRESS>
+                {% endfor %}
+              </ADDRESS.LIST>{% endif %}
+              <APPLICABLEFROM>{{ addressApplicableFrom }}</APPLICABLEFROM>
+              {% if pincode %}<PINCODE>{{ pincode }}</PINCODE>{% endif %}
+              {% if mailingName %}<MAILINGNAME>{{ mailingName }}</MAILINGNAME>{% endif %}
+              {% if state %}<STATE>{{ state }}</STATE>{% endif %}
+              {% if country %}<COUNTRY>{{ country }}</COUNTRY>{% endif %}
+            </LEDMAILINGDETAILS.LIST>{% endif %}
+            {% for key, value in extraFields %}<{{ key }}>{{ value }}</{{ key }}>
+            {% endfor %}
+          </LEDGER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

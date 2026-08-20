@@ -1,0 +1,19 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        {% for masterName in names %}
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <{{ collectionTag }} NAME="{{ masterName }}" ACTION="Delete">
+            <NAME>{{ masterName }}</NAME>
+          </{{ collectionTag }}>
+        </TALLYMESSAGE>
+        {% endfor %}
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

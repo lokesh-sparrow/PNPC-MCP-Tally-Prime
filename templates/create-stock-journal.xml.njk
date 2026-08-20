@@ -1,0 +1,49 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Stock Journal" ACTION="Create">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Stock Journal</VOUCHERTYPENAME>
+            <NARRATION>{{ narration }}</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>{{ destItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>{{ destRate }}/{{ unit }}</RATE>
+              <AMOUNT>-{{ destAmount }}</AMOUNT>
+              <ACTUALQTY>{{ destQty }} {{ unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ destQty }} {{ unit }}</BILLEDQTY>
+              {% if godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ godown }}</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <AMOUNT>-{{ destAmount }}</AMOUNT>
+                <ACTUALQTY>{{ destQty }} {{ unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ destQty }} {{ unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+            </INVENTORYENTRIESIN.LIST>
+            <INVENTORYENTRIESOUT.LIST>
+              <STOCKITEMNAME>{{ sourceItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <RATE>{{ sourceRate }}/{{ unit }}</RATE>
+              <AMOUNT>{{ sourceAmount }}</AMOUNT>
+              <ACTUALQTY>{{ sourceQty }} {{ unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ sourceQty }} {{ unit }}</BILLEDQTY>
+              {% if godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ godown }}</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <AMOUNT>{{ sourceAmount }}</AMOUNT>
+                <ACTUALQTY>{{ sourceQty }} {{ unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ sourceQty }} {{ unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+            </INVENTORYENTRIESOUT.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -1,0 +1,66 @@
+{
+  "manifest_version": "0.3",
+  "name": "pnpc-mcp-tally-prime",
+  "display_name": "PNPC-MCP-Tally-Prime",
+  "version": "1.0.0",
+  "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
+  "author": {
+    "name": "PNPC Global"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime"
+  },
+  "homepage": "https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme",
+  "support": "https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme",
+  "license": "ISC",
+  "icon": "assets/icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "TALLY_URL": "http://localhost:9000"
+      }
+    }
+  },
+  "tools_generated": false,
+  "tools": [
+    { "name": "get_ledgers", "description": "Get all ledgers (accounts) from TallyPrime" },
+    { "name": "get_stock_items", "description": "Get all stock items from TallyPrime" },
+    { "name": "get_vouchers", "description": "Get vouchers (Day Book) from TallyPrime filtered by date range" },
+    { "name": "get_company_info", "description": "Get the currently open company info from TallyPrime" },
+    { "name": "get_profit_and_loss", "description": "Get the Profit & Loss statement from TallyPrime for a date range" },
+    { "name": "get_balance_sheet", "description": "Get the Balance Sheet from TallyPrime as of a given date" },
+    { "name": "get_trial_balance", "description": "Get the Trial Balance from TallyPrime for a date range" },
+    { "name": "get_groups", "description": "Get all account groups (e.g. Sundry Debtors, Fixed Assets) from TallyPrime" },
+    { "name": "get_voucher_types", "description": "Get all voucher types configured in TallyPrime (e.g. Payment, Sales, Journal)" },
+    { "name": "get_cost_centres", "description": "Get all cost centres from TallyPrime" },
+    { "name": "get_stock_summary", "description": "Get the Stock Summary report from TallyPrime as of a given date" },
+    { "name": "get_bills_receivable", "description": "Get outstanding Bills Receivable from TallyPrime as of a given date" },
+    { "name": "get_bills_payable", "description": "Get outstanding Bills Payable from TallyPrime as of a given date" },
+    { "name": "get_ledger_vouchers", "description": "Get all voucher entries posted to a specific ledger within a date range" },
+    { "name": "create_ledger", "description": "Create a new ledger in TallyPrime, or rename/update an existing one by passing oldName" },
+    { "name": "delete_master", "description": "Delete one or more masters (ledger, group, stock item, voucher type, unit, godown, cost centre, etc.) from TallyPrime by name" },
+    { "name": "set_company", "description": "Switch TallyPrime's active company context" },
+    { "name": "set_period", "description": "Switch TallyPrime's active reporting period (from/to date)" },
+    { "name": "create_voucher", "description": "Create a new voucher (e.g. Payment, Receipt, Sales, Purchase, Journal) in TallyPrime, with 2 or more ledger entries" },
+    { "name": "create_stock_journal", "description": "Create a Stock Journal voucher in TallyPrime, moving inventory from one stock item to another" },
+    { "name": "create_sales_invoice", "description": "Create an item-invoice Sales voucher in TallyPrime with stock item lines and optional VAT" },
+    { "name": "create_purchase_invoice", "description": "Create an item-invoice Purchase voucher in TallyPrime with stock item lines and optional VAT" },
+    { "name": "create_group", "description": "Create a new account group in TallyPrime, nested under a parent group" },
+    { "name": "create_stock_item", "description": "Create a new stock item in TallyPrime" },
+    { "name": "update_stock_item", "description": "Update the group and/or unit of an existing stock item in TallyPrime" },
+    { "name": "delete_stock_item", "description": "Delete a stock item from TallyPrime. Fails if it has transactions posted against it." },
+    { "name": "update_voucher", "description": "Update an existing voucher in TallyPrime, replacing its ledger entries and narration" },
+    { "name": "delete_voucher", "description": "Permanently delete an existing voucher from TallyPrime, with no trace left behind" },
+    { "name": "sync_to_sql", "description": "Pull ledgers, groups, stock items, and vouchers into a local in-memory SQL cache for fast ad-hoc querying" },
+    { "name": "query_sql", "description": "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql" }
+  ],
+  "keywords": ["tally", "tallyprime", "accounting", "erp", "mcp"],
+  "compatibility": {
+    "platforms": ["win32", "darwin", "linux"]
+  }
+}

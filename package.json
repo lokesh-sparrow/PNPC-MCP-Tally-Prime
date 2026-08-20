@@ -1,0 +1,33 @@
+{
+  "name": "pnpc-mcp-tally-prime",
+  "version": "1.0.0",
+  "description": "PNPC's MCP server for reading from and writing to TallyPrime — ledgers, vouchers, inventory, and reports",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:http": "node dist/http-server.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "tally",
+    "tally-erp"
+  ],
+  "author": "PNPC Global",
+  "license": "ISC",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
+    "fast-xml-parser": "^5.10.1",
+    "nunjucks": "^3.2.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.1",
+    "@types/nunjucks": "^3.2.6",
+    "typescript": "^7.0.2"
+  }
+}

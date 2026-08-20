@@ -1,0 +1,21 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>PNPCMCPAction</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="PNPCMCPAction">
+            <USE>{{ action }}</USE>
+            {% for variable in variables %}<SET>{{ variable.name }} : "{{ variable.value }}"</SET>
+            {% endfor %}
+          </REPORT>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

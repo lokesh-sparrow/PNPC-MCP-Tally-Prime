@@ -1,0 +1,38 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="{{ voucherType }}" ACTION="Create">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>{{ voucherType }}</VOUCHERTYPENAME>
+            <NARRATION>{{ narration }}</NARRATION>
+            {% for entry in entries %}<ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ entry.ledgerName }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
+              <AMOUNT>{{ entry.amount }}</AMOUNT>
+              {% if entry.billName %}<BILLALLOCATIONS.LIST>
+                <NAME>{{ entry.billName }}</NAME>
+                <BILLTYPE>{{ entry.billType }}</BILLTYPE>
+                <AMOUNT>{{ entry.amount }}</AMOUNT>
+              </BILLALLOCATIONS.LIST>{% endif %}
+              {% if entry.costCentre %}<CATEGORYALLOCATIONS.LIST>
+                <CATEGORY>{{ entry.costCategory }}</CATEGORY>
+                <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
+                <COSTCENTREALLOCATIONS.LIST>
+                  <NAME>{{ entry.costCentre }}</NAME>
+                  <AMOUNT>{{ entry.amount }}</AMOUNT>
+                </COSTCENTREALLOCATIONS.LIST>
+              </CATEGORYALLOCATIONS.LIST>{% endif %}
+            </ALLLEDGERENTRIES.LIST>
+            {% endfor %}
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

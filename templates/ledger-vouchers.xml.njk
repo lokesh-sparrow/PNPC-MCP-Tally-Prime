@@ -1,0 +1,64 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>PNPCMCPReport</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>{{ fromDate }}</SVFROMDATE>
+        <SVTODATE>{{ toDate }}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="PNPCMCPReport">
+            <FORMS>PNPCMCPForm</FORMS>
+          </REPORT>
+          <FORM NAME="PNPCMCPForm">
+            <PARTS>PNPCMCPPart</PARTS>
+            <XMLTAG>DATA</XMLTAG>
+          </FORM>
+          <PART NAME="PNPCMCPPart">
+            <LINES>PNPCMCPLine,PNPCMCPLineOpening</LINES>
+            <REPEAT>PNPCMCPLine : PNPCMCPCollection</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPLine">
+            <FIELDS>FldGuid,FldDate,FldVoucherType,FldVoucherNumber,FldAlternateLedger,FldPartyLedger,FldAmount,FldNarration</FIELDS>
+            <XMLTAG>ROW</XMLTAG>
+          </LINE>
+          <LINE NAME="PNPCMCPLineOpening">
+            <FIELDS>FldDateOp,FldVoucherTypeOp,FldAmountOp</FIELDS>
+            <XMLTAG>ROW</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldGuid"><SET>$Guid</SET><XMLTAG>guid</XMLTAG></FIELD>
+          <FIELD NAME="FldDate"><SET>$Date</SET><XMLTAG>date</XMLTAG></FIELD>
+          <FIELD NAME="FldVoucherType"><SET>$VoucherTypeName</SET><XMLTAG>voucher_type</XMLTAG></FIELD>
+          <FIELD NAME="FldVoucherNumber"><SET>$VoucherNumber</SET><XMLTAG>voucher_number</XMLTAG></FIELD>
+          <FIELD NAME="FldAlternateLedger"><SET>$AllLedgerEntries[1,@@FilterNotLedgerEqual].LedgerName</SET><XMLTAG>alternate_ledger</XMLTAG></FIELD>
+          <FIELD NAME="FldPartyLedger"><SET>$PartyLedgerName</SET><XMLTAG>party_ledger</XMLTAG></FIELD>
+          <FIELD NAME="FldAmount"><SET>$$StringFindAndReplace:(if $$IsDebit:($AllLedgerEntries[1,@@FilterLedgerEqual].Amount) then -$$NumValue:$AllLedgerEntries[1,@@FilterLedgerEqual].Amount else $$NumValue:$AllLedgerEntries[1,@@FilterLedgerEqual].Amount):"(-)":"-"</SET><XMLTAG>amount</XMLTAG></FIELD>
+          <FIELD NAME="FldNarration"><SET>$Narration</SET><XMLTAG>narration</XMLTAG></FIELD>
+          <FIELD NAME="FldDateOp"><SET>##SVFromDate</SET><XMLTAG>date</XMLTAG></FIELD>
+          <FIELD NAME="FldVoucherTypeOp"><SET>"Opening"</SET><XMLTAG>voucher_type</XMLTAG></FIELD>
+          <FIELD NAME="FldAmountOp"><SET>$$StringFindAndReplace:(if $$IsDebit:$OpeningBalance:Ledger:"{{ ledgerName }}" then -$$NumValue:$OpeningBalance:Ledger:"{{ ledgerName }}" else $$NumValue:$OpeningBalance:Ledger:"{{ ledgerName }}"):"(-)":"-"</SET><XMLTAG>amount</XMLTAG></FIELD>
+          <COLLECTION NAME="PNPCMCPCollection">
+            <TYPE>Voucher</TYPE>
+            <FETCH>AllLedgerEntries,Narration,PartyLedgerName</FETCH>
+            <FILTER>FilterLedger,FilterExcludeInventoryVch,FilterExcludeOrderVch,FilterCancelledVouchers,FilterOptionalVouchers</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="FilterLedger">NOT $$IsEmpty:$AllLedgerEntries[1,@@FilterLedgerEqual].LedgerName</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="FilterLedgerEqual">$$IsEqual:$LedgerName:"{{ ledgerName }}"</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="FilterNotLedgerEqual">NOT $$IsEqual:$LedgerName:"{{ ledgerName }}"</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="FilterExcludeInventoryVch">NOT $$IsInventoryVch:$VoucherTypeName</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="FilterExcludeOrderVch">NOT $$IsOrderVch:$VoucherTypeName</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="FilterCancelledVouchers">NOT $IsCancelled</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="FilterOptionalVouchers">NOT $IsOptional</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

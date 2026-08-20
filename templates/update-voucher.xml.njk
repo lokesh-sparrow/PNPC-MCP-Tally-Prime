@@ -1,0 +1,44 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="{{ voucherType }}" ACTION="Alter">
+            <VOUCHERTYPENAME>{{ voucherType }}</VOUCHERTYPENAME>
+            <NARRATION>{{ narration }}</NARRATION>
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ debitLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-{{ amount }}</AMOUNT>
+              {% if debitCostCentre %}<CATEGORYALLOCATIONS.LIST>
+                <CATEGORY>{{ costCategory }}</CATEGORY>
+                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                <COSTCENTREALLOCATIONS.LIST>
+                  <NAME>{{ debitCostCentre }}</NAME>
+                  <AMOUNT>-{{ amount }}</AMOUNT>
+                </COSTCENTREALLOCATIONS.LIST>
+              </CATEGORYALLOCATIONS.LIST>{% endif %}
+            </ALLLEDGERENTRIES.LIST>
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ creditLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>{{ amount }}</AMOUNT>
+              {% if creditCostCentre %}<CATEGORYALLOCATIONS.LIST>
+                <CATEGORY>{{ costCategory }}</CATEGORY>
+                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                <COSTCENTREALLOCATIONS.LIST>
+                  <NAME>{{ creditCostCentre }}</NAME>
+                  <AMOUNT>{{ amount }}</AMOUNT>
+                </COSTCENTREALLOCATIONS.LIST>
+              </CATEGORYALLOCATIONS.LIST>{% endif %}
+            </ALLLEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
