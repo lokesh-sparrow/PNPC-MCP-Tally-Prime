@@ -1,8 +1,36 @@
 import { PGlite } from "@electric-sql/pglite";
 import { tallyRequest, buildCollectionXml, CollectionField } from "./tally.js";
 import { extractRecords } from "./clean.js";
+import { render } from "./templates.js";
 
-// In-memory Postgres (WASM). No file path => data lives only for this process's lifetime.
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function toTallyActionDate(ddmmyyyy: string): string {
+  const [dd, mm, yyyy] = ddmmyyyy.split("-");
+  return `${parseInt(dd, 10)}-${MONTH_ABBR[parseInt(mm, 10) - 1]}-${yyyy}`;
+}
+
+function toIsoDate(ddmmyyyy: string): string {
+  const [dd, mm, yyyy] = ddmmyyyy.split("-");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Tally returns voucher dates like "1-Jan-24" (D-Mon-YY) regardless of input format.
+function parseTallyDate(s: string): string | null {
+  const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(s.trim());
+  if (!m) return null;
+  const day = m[1].padStart(2, "0");
+  const monthIdx = MONTH_ABBR.findIndex((abbr) => abbr.toLowerCase() === m[2].toLowerCase());
+  if (monthIdx < 0) return null;
+  const month = String(monthIdx + 1).padStart(2, "0");
+  const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+  return `${year}-${month}-${day}`;
+}
+
+// In-memory Postgres (WASM), scoped to this session only. A consultant using
+// this against many different client companies should not have one
+// company's cached vouchers silently outlive the session and mix with the
+// next company's — starting fresh each session/company avoids that entirely.
 const db = new PGlite();
 let schemaReady: Promise<void> | null = null;
 
@@ -23,6 +51,18 @@ async function ensureSchema(): Promise<void> {
         parent TEXT,
         closing_balance NUMERIC
       );
+      CREATE TABLE IF NOT EXISTS vouchers (
+        guid TEXT PRIMARY KEY,
+        date DATE,
+        voucher_type TEXT,
+        voucher_number TEXT,
+        party_ledger TEXT,
+        amount NUMERIC,
+        narration TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_vouchers_date ON vouchers(date);
+      CREATE INDEX IF NOT EXISTS idx_vouchers_type ON vouchers(voucher_type);
+      CREATE INDEX IF NOT EXISTS idx_vouchers_party ON vouchers(party_ledger);
     `).then(() => undefined);
   }
   await schemaReady;
@@ -48,8 +88,9 @@ async function fetchCollection(
   return extractRecords(parsed) as Record<string, unknown>[];
 }
 
-// Pulls ledgers, groups, stock items, and the last year of Day Book vouchers
-// from Tally and loads them into the local SQL cache, replacing prior data.
+// Pulls ledgers, groups, and stock items from Tally into this session's SQL
+// cache, replacing whatever was there before (use sync_vouchers_to_sql for
+// voucher headers, which are additive by date range instead).
 export async function syncAll(): Promise<string> {
   await ensureSchema();
 
@@ -94,8 +135,58 @@ export async function syncAll(): Promise<string> {
   return (
     `Synced ${ledgers.length} ledgers, ${groups.length} groups, ` +
     `${stockItems.length} stock items into the local SQL cache. ` +
-    `Vouchers are not bulk-synced (fetch via get_vouchers/get_ledger_vouchers per range) ` +
-    `since Tally's Day Book export doesn't page well for large date spans.`
+    `Vouchers are not synced by this tool — use sync_vouchers_to_sql(from, to) for those, ` +
+    `one date range at a time (quarterly is a safe chunk size for a busy company).`
+  );
+}
+
+function syncVouchersXml(fromDate: string, toDate: string): string {
+  return render("sync-vouchers.xml.njk", { fromDate, toDate });
+}
+
+// Syncs voucher HEADERS (not line items) for one date range into the
+// session-scoped cache (gone once this process exits — deliberately, so
+// switching companies never leaves a prior client's data behind). Call once
+// per chunk (e.g. per quarter) to build up full multi-year history without a
+// single request large enough to risk Tally's gateway timing out —
+// re-running for a range that was already synced replaces just that range.
+export async function syncVouchers(from: string, to: string): Promise<string> {
+  await ensureSchema();
+
+  const xml = syncVouchersXml(toTallyActionDate(from), toTallyActionDate(to));
+  const result = await tallyRequest(xml);
+  const rows = extractRecords(result) as Record<string, unknown>[];
+
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+
+  await db.exec("BEGIN");
+  try {
+    await db.query("DELETE FROM vouchers WHERE date >= $1 AND date <= $2", [fromIso, toIso]);
+    for (const v of rows) {
+      const date = parseTallyDate(str(v.DATE) ?? "");
+      if (!date) continue; // "Opening" rows and similar have no real voucher date/guid
+      await db.query(
+        `INSERT INTO vouchers (guid, date, voucher_type, voucher_number, party_ledger, amount, narration)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (guid) DO UPDATE SET
+           date = EXCLUDED.date, voucher_type = EXCLUDED.voucher_type,
+           voucher_number = EXCLUDED.voucher_number, party_ledger = EXCLUDED.party_ledger,
+           amount = EXCLUDED.amount, narration = EXCLUDED.narration`,
+        [str(v.GUID), date, str(v.VOUCHER_TYPE), str(v.VOUCHER_NUMBER), str(v.PARTY_LEDGER), num(v.AMOUNT), str(v.NARRATION)]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+
+  return (
+    `Synced ${rows.length} vouchers for ${from} to ${to} into this session's SQL cache ` +
+    `(cleared when this session ends — sync again next session, or after switching companies). ` +
+    `Call again with other date ranges to build up full history for this session — ` +
+    `each call only replaces vouchers within its own date range.`
   );
 }
 

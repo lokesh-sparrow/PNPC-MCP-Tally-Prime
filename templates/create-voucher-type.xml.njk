@@ -1,0 +1,27 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          {% if oldName %}
+          <VOUCHERTYPE NAME="{{ oldName }}" ACTION="Alter">
+          {% else %}
+          <VOUCHERTYPE NAME="{{ name }}" ACTION="Create">
+          {% endif %}
+            <NAME>{{ name }}</NAME>
+            <PARENT>{{ parent }}</PARENT>
+            {% if numberingMethod %}<NUMBERINGMETHOD>{{ numberingMethod }}</NUMBERINGMETHOD>{% endif %}
+            {% if abbreviation %}<VCHTYPEABBREV>{{ abbreviation }}</VCHTYPEABBREV>{% endif %}
+            {% if preventDuplicates is not undefined %}<PREVENTDUPLICATES>{{ "Yes" if preventDuplicates else "No" }}</PREVENTDUPLICATES>{% endif %}
+            {% for key, value in extraFields %}<{{ key }}>{{ value }}</{{ key }}>
+            {% endfor %}
+          </VOUCHERTYPE>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

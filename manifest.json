@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
@@ -65,12 +65,14 @@
     { "name": "create_godown", "description": "Create a new Godown/Location in TallyPrime, optionally nested under a parent godown" },
     { "name": "create_cost_category", "description": "Create a new Cost Category in TallyPrime" },
     { "name": "create_cost_centre", "description": "Create a new Cost Centre in TallyPrime" },
+    { "name": "create_voucher_type", "description": "Create a new custom Voucher Type in TallyPrime, or rename/reconfigure an existing one" },
     { "name": "create_stock_item", "description": "Create a new stock item in TallyPrime" },
     { "name": "update_stock_item", "description": "Update the group and/or unit of an existing stock item in TallyPrime" },
     { "name": "delete_stock_item", "description": "Delete a stock item from TallyPrime. Fails if it has transactions posted against it." },
     { "name": "update_voucher", "description": "Update an existing voucher in TallyPrime, replacing its ledger entries and narration" },
     { "name": "delete_voucher", "description": "Permanently delete an existing voucher from TallyPrime, with no trace left behind" },
-    { "name": "sync_to_sql", "description": "Pull ledgers, groups, stock items, and vouchers into a local in-memory SQL cache for fast ad-hoc querying" },
+    { "name": "sync_to_sql", "description": "Pull ledgers, groups, and stock items into this session's in-memory SQL cache for fast ad-hoc querying" },
+    { "name": "sync_vouchers_to_sql", "description": "Pull voucher headers for one date range into this session's in-memory SQL cache" },
     { "name": "query_sql", "description": "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql" }
   ],
   "keywords": ["tally", "tallyprime", "accounting", "erp", "mcp"],

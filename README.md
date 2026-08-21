@@ -98,7 +98,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (44 total)
+## Available tools (45 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -196,8 +196,17 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `sync_to_sql` | — | Pulls ledgers, groups, and stock items into a local in-memory SQL cache. Does **not** sync vouchers — Tally's Day Book export doesn't page well for bulk historical pulls; use `get_vouchers`/`get_ledger_vouchers` per date range for those |
-| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`. There is no `vouchers` table |
+| `sync_to_sql` | — | Pulls ledgers, groups, and stock items into a **session-only, in-memory** SQL cache |
+| `sync_vouchers_to_sql` | `from`, `to` | Pulls voucher headers (date, type, number, party, amount, narration — not line items) for one date range into the same cache. Call it once per chunk (e.g. per quarter) to build up full multi-year history within a session — each call only replaces vouchers in its own date range, so calling it for 2024 then 2025 gives you both |
+| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)` |
+
+> The cache is **in-memory and session-scoped only** — it's gone as soon as
+> the server process exits, and there's no persistence to disk. This is
+> deliberate: since one Tally connection can be pointed at many different
+> client companies over time (`set_company`), nothing here tracks *which*
+> company a cached row came from. If you switch companies, re-sync before
+> querying — don't run `query_sql` against a cache that spans a company
+> switch, since the rows won't be distinguishable by company.
 
 ## Environment variables
 
@@ -257,7 +266,7 @@ src/
   tally.ts        Tally HTTP client: sends XML, handles connection/timeout errors
   clean.ts        Normalizes Tally's raw XML->JSON into predictable JSON
   templates.ts    Renders the Nunjucks XML templates in templates/
-  db.ts           PGLite SQL cache: sync_to_sql / query_sql
+  db.ts           PGLite SQL cache: sync_to_sql / sync_vouchers_to_sql / query_sql
   tools.ts        MCP tool definitions + XML request builders
   server.ts       Shared MCP Server construction (used by both entry points)
   index.ts        stdio entry point (local Claude Desktop)

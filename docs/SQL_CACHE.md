@@ -8,8 +8,15 @@ dedicated tool for exactly that. The SQL cache solves this generically.
 
 `sync_to_sql` pulls ledgers, groups, and stock items from Tally and loads
 them into [PGLite](https://pglite.dev) — a real Postgres engine compiled to
-WASM, running in-process, in-memory (see [`src/db.ts`](../src/db.ts)). No
-external database server involved.
+WASM, running in-process, in-memory, with no disk backing (see
+[`src/db.ts`](../src/db.ts)). No external database server involved.
+
+`sync_vouchers_to_sql(from, to)` pulls voucher **headers** (not line items —
+date, type, number, party, amount, narration) for one date range into the
+same cache. It's additive by date range: call it once per chunk (e.g. once
+per quarter) to build up full multi-year history within a session without
+a single request large enough to risk Tally's gateway timing out. Re-running
+it for a range you already synced just refreshes that range.
 
 `query_sql` then runs an arbitrary read-only `SELECT` against that cache.
 
@@ -20,28 +27,34 @@ external database server involved.
 | `ledgers` | `name`, `parent`, `closing_balance` |
 | `groups` | `name`, `parent` |
 | `stock_items` | `name`, `parent`, `closing_balance` |
+| `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` |
 
-There is no `vouchers` table — voucher data isn't cached here at all (see Limitations).
+`vouchers` is only populated for date ranges you've explicitly pulled via
+`sync_vouchers_to_sql` — it starts empty every session.
 
 ## Example
 
 ```
 sync_to_sql
-query_sql: SELECT name, closing_balance FROM ledgers
-           WHERE parent = 'Sundry Debtors'
-           ORDER BY closing_balance DESC LIMIT 10
+sync_vouchers_to_sql: from=01-01-2024 to=31-03-2024
+sync_vouchers_to_sql: from=01-04-2024 to=30-06-2024
+query_sql: SELECT voucher_type, COUNT(*), SUM(amount) FROM vouchers
+           GROUP BY voucher_type ORDER BY 2 DESC
 ```
 
 ## Limitations
 
-- **In-memory only.** The cache is lost when the server process restarts.
-  Re-run `sync_to_sql` after restarting Claude Desktop or the HTTP server.
-- **Snapshot, not live.** Data reflects Tally's state at the moment you last
-  ran `sync_to_sql`, not the current moment. Re-sync before answering
-  questions that need up-to-the-minute figures.
-- **Vouchers aren't cached at all.** Tally's Day Book export doesn't page well
-  across large date ranges, so there's no `vouchers` table to sync into — use
-  `get_vouchers` / `get_ledger_vouchers` for voucher-level data instead.
+- **In-memory and session-only — deliberately, not just as a limitation of
+  the underlying engine.** The cache is lost whenever the server process
+  restarts, and it is **not company-aware**: no row records which Tally
+  company it came from. Since one server instance can be pointed at many
+  different client companies over time via `set_company`, persisting the
+  cache across restarts (or across a company switch within one session)
+  would risk silently mixing one client's numbers with another's. Re-sync
+  after switching companies, and before answering any report that needs
+  up-to-the-minute figures.
+- **Vouchers only carry header-level detail.** No stock item or ledger line
+  breakdown is cached — use `get_vouchers` / `get_ledger_vouchers` for that.
 - **Read-only.** `query_sql` rejects anything that isn't a single `SELECT`
   (see the `DDL_KEYWORDS` guard in `src/db.ts`) — it cannot be used to write
   back to Tally.

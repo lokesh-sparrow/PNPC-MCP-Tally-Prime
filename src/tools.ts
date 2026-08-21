@@ -1,7 +1,7 @@
 import { tallyRequest, buildCollectionXml } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, runSql } from "./db.js";
+import { syncAll, syncVouchers, runSql } from "./db.js";
 
 export const tools = [
   {
@@ -935,6 +935,35 @@ export const tools = [
     },
   },
   {
+    name: "create_voucher_type",
+    description:
+      "Create a new custom Voucher Type in TallyPrime (e.g. 'Bank Payment' as a sub-type of 'Payment', with its " +
+      "own numbering series/abbreviation) — or rename/reconfigure an existing one by passing oldName. Base types " +
+      "to derive from: 'Payment', 'Receipt', 'Journal', 'Contra', 'Sales', 'Purchase', 'Credit Note', 'Debit " +
+      "Note', 'Stock Journal', 'Physical Stock', etc. — must be an exact existing voucher type name (check " +
+      "get_voucher_types first). Setting numberingMethod explicitly is useful given the confirmed-live issue " +
+      "where some Tally configurations stop auto-numbering item-invoice-mode voucher types via the XML gateway " +
+      "unless a voucherNumber is supplied on every create call — see create_sales_invoice's voucherNumber note.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the voucher type (the new name, if renaming)" },
+        oldName: { type: "string", description: "Existing voucher type's current name — pass this to rename/reconfigure instead of creating a new one." },
+        parent: { type: "string", description: "Base voucher type this derives from, e.g. 'Payment', 'Sales', 'Journal'. Must already exist (see get_voucher_types)." },
+        numberingMethod: {
+          type: "string",
+          description:
+            "'Automatic', 'Manual', 'Automatic (Manual Override)', or 'Multi User Auto'. Controls whether Tally " +
+            "auto-assigns voucher numbers on create, and whether an explicit voucherNumber is accepted/required.",
+        },
+        abbreviation: { type: "string", description: "Short code shown for this voucher type in reports, e.g. 'Bank Pymt'." },
+        preventDuplicates: { type: "boolean", description: "Reject a new voucher if its number duplicates an existing one of this type." },
+        extraFields: { type: "object", description: "Escape hatch for any other native Tally VOUCHERTYPE field by exact XML tag name — not validated." },
+      },
+      required: ["name", "parent"],
+    },
+  },
+  {
     name: "create_stock_item",
     description: "Create a new stock item in TallyPrime",
     inputSchema: {
@@ -1073,17 +1102,43 @@ export const tools = [
   {
     name: "sync_to_sql",
     description:
-      "Pull ledgers, groups, and stock items from TallyPrime into a local in-memory SQL cache, so query_sql can run " +
-      "fast arbitrary queries without hitting Tally each time. Does NOT sync vouchers — use get_vouchers/" +
-      "get_ledger_vouchers per date range for those (Tally's Day Book export doesn't page well for bulk historical sync).",
+      "Pull ledgers, groups, and stock items from TallyPrime into this session's SQL cache (in-memory — gone when " +
+      "this session ends, and replaced whenever you switch company and re-sync, so nothing lingers between " +
+      "different companies), so query_sql can run fast arbitrary queries without hitting Tally each time. Does " +
+      "NOT sync vouchers — use sync_vouchers_to_sql for those, one date range at a time.",
     inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "sync_vouchers_to_sql",
+    description:
+      "Pull voucher HEADERS (date, type, number, party ledger, amount, narration — not line items) for one date " +
+      "range into this session's SQL cache (in-memory, gone when the session ends), so query_sql can " +
+      "aggregate/report on them (e.g. sales by customer by month) without re-fetching from Tally. Call this once " +
+      "per chunk to build up full multi-year history for the CURRENTLY OPEN company within this session — " +
+      "re-running for the SAME range just refreshes it (safe to re-run), and each call only touches vouchers " +
+      "within its own date range, so calling it for 2024 then 2025 gives you both, not just the latest. If you " +
+      "switch companies (set_company), sync again — the cache doesn't track which company a row came from, so " +
+      "don't query across a company switch without re-syncing first. IMPORTANT: pick a chunk size that won't " +
+      "time out — a full year (~7,500 vouchers here) took ~6s against the 10s request timeout; prefer quarterly " +
+      "or monthly chunks for a busy company, and back off further if a call times out. Does not include stock " +
+      "item / ledger line detail (see get_ledger_vouchers/get_vouchers for that).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date in DD-MM-YYYY format" },
+        to: { type: "string", description: "End date in DD-MM-YYYY format" },
+      },
+      required: ["from", "to"],
+    },
   },
   {
     name: "query_sql",
     description:
-      "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql. " +
-      "Tables: ledgers(name, parent, closing_balance), groups(name, parent), " +
-      "stock_items(name, parent, closing_balance). There is no vouchers table — voucher data is not cached here.",
+      "Run a read-only SQL SELECT query against this session's in-memory cache populated by sync_to_sql/" +
+      "sync_vouchers_to_sql (gone when the session ends). Tables: ledgers(name, parent, closing_balance), " +
+      "groups(name, parent), stock_items(name, parent, closing_balance), vouchers(guid, date, voucher_type, " +
+      "voucher_number, party_ledger, amount, narration) — vouchers is only populated for date ranges you've " +
+      "explicitly synced via sync_vouchers_to_sql, for whichever company was open at sync time.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1594,6 +1649,18 @@ function createCostCategoryXml(args: { name: string; allocateToRevenue?: boolean
 
 function createCostCentreXml(args: { name: string; category?: string; parent?: string }): string {
   return render("create-cost-centre.xml.njk", args);
+}
+
+function createVoucherTypeXml(args: {
+  name: string;
+  oldName?: string;
+  parent: string;
+  numberingMethod?: string;
+  abbreviation?: string;
+  preventDuplicates?: boolean;
+  extraFields?: Record<string, string>;
+}): string {
+  return render("create-voucher-type.xml.njk", args);
 }
 
 function updateStockItemXml(args: {
@@ -2179,6 +2246,13 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "create_voucher_type": {
+      const voucherTypeArgs = args as Parameters<typeof createVoucherTypeXml>[0];
+      const xml = createVoucherTypeXml(voucherTypeArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_stock_item": {
       const {
         name: itemName,
@@ -2272,6 +2346,11 @@ export async function handleTool(
 
     case "sync_to_sql": {
       return await syncAll();
+    }
+
+    case "sync_vouchers_to_sql": {
+      const { from, to } = args as { from: string; to: string };
+      return await syncVouchers(from, to);
     }
 
     case "query_sql": {

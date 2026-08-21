@@ -83,8 +83,11 @@ directly in Tally's UI instead.
 
 | Tool | Args | Effect |
 |---|---|---|
-| `sync_to_sql` | — | Loads ledgers/groups/stock items into an in-memory SQL cache (PGLite) |
+| `sync_to_sql` | — | Loads ledgers/groups/stock items into an in-memory SQL cache (PGLite), scoped to this session only |
+| `sync_vouchers_to_sql` | `from`, `to` | Loads voucher headers (no line items) for one date range into the same cache — additive by date range, so calling it repeatedly for different chunks builds up full history within the session |
 | `query_sql` | `sql` | Runs a read-only `SELECT` against that cache |
+
+**Deliberately not persisted, and not company-aware.** The cache is pure in-memory PGLite with no disk backing — it disappears when the process exits. This was a deliberate design choice, not an oversight: since one server instance can be pointed at many different client companies over the life of a session (`set_company`), and no cached row tracks which company it came from, persisting across restarts would risk silently mixing one client's cached data with the next. Re-sync after switching companies before running `query_sql`.
 
 See [SQL_CACHE.md](./SQL_CACHE.md) for schema and examples.
 
