@@ -2,6 +2,7 @@ import { tallyRequest, buildCollectionXml } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
 import { syncAll, syncVouchers, runSql } from "./db.js";
+import { readAuditLog } from "./audit.js";
 
 export const tools = [
   {
@@ -313,30 +314,80 @@ export const tools = [
   {
     name: "create_stock_journal",
     description:
-      "Create a Stock Journal voucher in TallyPrime, moving inventory from one stock item to another (e.g. transfer, or a simple manufacturing-style conversion). Inventory-only — no ledger entries.",
+      "Create a Stock Journal voucher in TallyPrime, moving inventory from one or more source stock items to " +
+      "one or more destination stock items (transfer, manufacturing-style conversion with multiple raw materials " +
+      "consumed and/or multiple finished/by-products produced, etc). Inventory-only — no ledger entries.",
     inputSchema: {
       type: "object",
       properties: {
         date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
         narration: { type: "string", description: "Narration / description for the voucher" },
-        sourceItem: { type: "string", description: "Exact name of the stock item being consumed/issued" },
-        sourceQty: { type: "number", description: "Quantity of sourceItem consumed" },
-        sourceRate: { type: "number", description: "Rate per unit of sourceItem" },
-        destItem: { type: "string", description: "Exact name of the stock item being produced/received" },
-        destQty: { type: "number", description: "Quantity of destItem produced" },
-        destRate: { type: "number", description: "Rate per unit of destItem" },
-        unit: { type: "string", description: "Unit of measure shared by both items, e.g. 'Nos'" },
-        godown: {
-          type: "string",
+        sources: {
+          type: "array",
+          description: "One or more stock items being consumed/issued.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being consumed" },
+              qty: { type: "number", description: "Quantity consumed" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this line is issued from (optional)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        destinations: {
+          type: "array",
+          description: "One or more stock items being produced/received.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being produced" },
+              qty: { type: "number", description: "Quantity produced" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this line is received into (optional)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        additionalCosts: {
+          type: "array",
           description:
-            "Godown for both legs (optional — only needed if the items have godown/location tracking enabled).",
+            "Optional additional costs (labour, freight, overhead, etc) incurred in production, posted through " +
+            "an expense ledger and folded into the value of the destination item(s) rather than left as a " +
+            "separate P&L line.",
+          items: {
+            type: "object",
+            properties: {
+              ledgerName: { type: "string", description: "Exact name of the expense ledger to post this cost to" },
+              amount: { type: "number", description: "Cost amount" },
+              allocationType: {
+                type: "string",
+                enum: ["Appropriate by Value", "Appropriate by Quantity", "Not Applicable"],
+                description:
+                  "How to apportion this cost across multiple destination items. Default: 'Appropriate by Value'.",
+              },
+            },
+            required: ["ledgerName", "amount"],
+          },
         },
         voucherNumber: {
           type: "string",
           description: "Explicit voucher number. Normally omit and let Tally auto-number.",
         },
+        voucherType: {
+          type: "string",
+          description:
+            "Voucher type to post against. Defaults to 'Stock Journal'. Pass the name of a voucher type " +
+            "created via create_voucher_type with useAsManufacturingJournal to post as a real Manufacturing " +
+            "Journal instead — same underlying voucher shape either way.",
+        },
       },
-      required: ["date", "sourceItem", "sourceQty", "sourceRate", "destItem", "destQty", "destRate", "unit"],
+      required: ["date", "sources", "destinations"],
     },
   },
   {
@@ -353,20 +404,67 @@ export const tools = [
         date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
         voucherNumber: { type: "string", description: "Exact voucher number of the stock journal to update" },
         narration: { type: "string", description: "Narration / description for the voucher" },
-        sourceItem: { type: "string", description: "Exact name of the stock item being consumed/issued" },
-        sourceQty: { type: "number", description: "Quantity of sourceItem consumed" },
-        sourceRate: { type: "number", description: "Rate per unit of sourceItem" },
-        destItem: { type: "string", description: "Exact name of the stock item being produced/received" },
-        destQty: { type: "number", description: "Quantity of destItem produced" },
-        destRate: { type: "number", description: "Rate per unit of destItem" },
-        unit: { type: "string", description: "Unit of measure shared by both items, e.g. 'Nos'" },
-        godown: {
+        sources: {
+          type: "array",
+          description: "One or more stock items being consumed/issued.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being consumed" },
+              qty: { type: "number", description: "Quantity consumed" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this line is issued from (optional)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        destinations: {
+          type: "array",
+          description: "One or more stock items being produced/received.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item being produced" },
+              qty: { type: "number", description: "Quantity produced" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this line is received into (optional)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        additionalCosts: {
+          type: "array",
+          description:
+            "Optional additional costs (labour, freight, overhead, etc) incurred in production, posted through " +
+            "an expense ledger and folded into the value of the destination item(s) rather than left as a " +
+            "separate P&L line.",
+          items: {
+            type: "object",
+            properties: {
+              ledgerName: { type: "string", description: "Exact name of the expense ledger to post this cost to" },
+              amount: { type: "number", description: "Cost amount" },
+              allocationType: {
+                type: "string",
+                enum: ["Appropriate by Value", "Appropriate by Quantity", "Not Applicable"],
+                description:
+                  "How to apportion this cost across multiple destination items. Default: 'Appropriate by Value'.",
+              },
+            },
+            required: ["ledgerName", "amount"],
+          },
+        },
+        voucherType: {
           type: "string",
           description:
-            "Godown for both legs (optional — only needed if the items have godown/location tracking enabled).",
+            "Voucher type of the existing voucher. Defaults to 'Stock Journal' — must match the type it was " +
+            "originally created with (e.g. a custom Manufacturing Journal type), or the lookup will not find it.",
         },
       },
-      required: ["date", "voucherNumber", "sourceItem", "sourceQty", "sourceRate", "destItem", "destQty", "destRate", "unit"],
+      required: ["date", "voucherNumber", "sources", "destinations"],
     },
   },
   {
@@ -943,7 +1041,10 @@ export const tools = [
       "Note', 'Stock Journal', 'Physical Stock', etc. — must be an exact existing voucher type name (check " +
       "get_voucher_types first). Setting numberingMethod explicitly is useful given the confirmed-live issue " +
       "where some Tally configurations stop auto-numbering item-invoice-mode voucher types via the XML gateway " +
-      "unless a voucherNumber is supplied on every create call — see create_sales_invoice's voucherNumber note.",
+      "unless a voucherNumber is supplied on every create call — see create_sales_invoice's voucherNumber note. " +
+      "Confirmed live separately: a brand-new custom voucher type created WITHOUT numberingMethod set can accept " +
+      "vouchers with a completely blank voucher number (not even '1') — pass numberingMethod: 'Automatic' " +
+      "explicitly to avoid ending up with unreferenceable vouchers you can only look up/delete by date.",
     inputSchema: {
       type: "object",
       properties: {
@@ -958,6 +1059,14 @@ export const tools = [
         },
         abbreviation: { type: "string", description: "Short code shown for this voucher type in reports, e.g. 'Bank Pymt'." },
         preventDuplicates: { type: "boolean", description: "Reject a new voucher if its number duplicates an existing one of this type." },
+        useAsManufacturingJournal: {
+          type: "boolean",
+          description:
+            "Flag this voucher type as a Manufacturing Journal (only meaningful with parent 'Stock Journal'). " +
+            "Same underlying voucher XML as a plain Stock Journal — this only changes how Tally labels/reports " +
+            "it. Pass this voucher type's name as 'voucherType' to create_stock_journal/update_stock_journal to " +
+            "post against it instead of the generic 'Stock Journal' type.",
+        },
         extraFields: { type: "object", description: "Escape hatch for any other native Tally VOUCHERTYPE field by exact XML tag name — not validated." },
       },
       required: ["name", "parent"],
@@ -1147,6 +1256,22 @@ export const tools = [
       required: ["sql"],
     },
   },
+  {
+    name: "get_audit_log",
+    description:
+      "Read this connector's append-only audit log — every tool call made through it (read or write), with " +
+      "timestamp, arguments, and outcome (success/error/denied). The log file itself is never rewritten or " +
+      "truncated by this tool, only appended to as calls happen, so this always reflects the true history. Use " +
+      "this to review what an agent actually did against this Tally company, e.g. before trusting a session's " +
+      "claimed results, or to audit write operations after the fact.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Max number of most-recent entries to return. Defaults to 50." },
+        toolFilter: { type: "string", description: "Only return entries for this exact tool name." },
+      },
+    },
+  },
 ];
 
 function reportXml(reportName: string, staticVariables: Record<string, string>): string {
@@ -1300,55 +1425,75 @@ function createVoucherXml(args: {
   });
 }
 
+type StockJournalLineInput = {
+  stockItem: string;
+  qty: number;
+  rate: number;
+  unit: string;
+  godown?: string;
+  batchName?: string;
+};
+
+function computeStockJournalLines(lines: StockJournalLineInput[]) {
+  return lines.map((line) => ({
+    ...line,
+    amount: line.qty * line.rate,
+    batchName: line.batchName ?? "Primary Batch",
+  }));
+}
+
+type AdditionalCostInput = {
+  ledgerName: string;
+  amount: number;
+  // Tally's own field controlling how this cost is auto-apportioned across
+  // multiple destination items in the same voucher — confirmed live via a
+  // real Tally-exported Stock Journal template (ADDLALLOCTYPE tag).
+  allocationType?: "Appropriate by Value" | "Appropriate by Quantity" | "Not Applicable";
+};
+
+function computeAdditionalCosts(costs: AdditionalCostInput[] | undefined) {
+  return (costs ?? []).map((cost) => ({
+    ...cost,
+    allocationType: cost.allocationType ?? "Appropriate by Value",
+  }));
+}
+
 function createStockJournalXml(args: {
   date: string;
   narration?: string;
-  sourceItem: string;
-  sourceQty: number;
-  sourceRate: number;
-  destItem: string;
-  destQty: number;
-  destRate: number;
-  unit: string;
-  godown?: string;
+  sources: StockJournalLineInput[];
+  destinations: StockJournalLineInput[];
+  additionalCosts?: AdditionalCostInput[];
   voucherNumber?: string;
+  // Defaults to plain "Stock Journal". Pass the name of a voucher type created
+  // via create_voucher_type with useAsManufacturingJournal to post against a
+  // real Manufacturing Journal instead — same XML shape either way.
+  voucherType?: string;
 }): string {
-  const { date, narration, sourceItem, sourceQty, sourceRate, destItem, destQty, destRate, unit, godown, voucherNumber } = args;
+  const { date, narration, sources, destinations, additionalCosts, voucherNumber, voucherType } = args;
   return render("create-stock-journal.xml.njk", {
     tallyDate: date.split("-").reverse().join(""),
     narration: narration ?? "",
-    sourceItem,
-    sourceQty,
-    sourceRate,
-    sourceAmount: sourceQty * sourceRate,
-    destItem,
-    destQty,
-    destRate,
-    destAmount: destQty * destRate,
-    unit,
-    godown,
+    sources: computeStockJournalLines(sources),
+    destinations: computeStockJournalLines(destinations),
+    additionalCosts: computeAdditionalCosts(additionalCosts),
     voucherNumber,
+    voucherType: voucherType ?? "Stock Journal",
   });
 }
 
 function updateStockJournalXml(
   args: Parameters<typeof createStockJournalXml>[0] & { voucherNumber: string }
 ): string {
-  const { date, narration, sourceItem, sourceQty, sourceRate, destItem, destQty, destRate, unit, godown, voucherNumber } = args;
+  const { date, narration, sources, destinations, additionalCosts, voucherNumber, voucherType } = args;
   return render("update-stock-journal.xml.njk", {
     tallyDate: date.split("-").reverse().join(""),
     voucherNumber,
     narration: narration ?? "",
-    sourceItem,
-    sourceQty,
-    sourceRate,
-    sourceAmount: sourceQty * sourceRate,
-    destItem,
-    destQty,
-    destRate,
-    destAmount: destQty * destRate,
-    unit,
-    godown,
+    sources: computeStockJournalLines(sources),
+    destinations: computeStockJournalLines(destinations),
+    additionalCosts: computeAdditionalCosts(additionalCosts),
+    voucherType: voucherType ?? "Stock Journal",
   });
 }
 
@@ -1658,6 +1803,10 @@ function createVoucherTypeXml(args: {
   numberingMethod?: string;
   abbreviation?: string;
   preventDuplicates?: boolean;
+  // Tally's flag (confirmed live via a real Tally-exported voucher type template)
+  // that marks this voucher type as a Manufacturing Journal — same underlying
+  // Stock Journal XML shape, but reported/labelled distinctly in Tally.
+  useAsManufacturingJournal?: boolean;
   extraFields?: Record<string, string>;
 }): string {
   return render("create-voucher-type.xml.njk", args);
@@ -2183,7 +2332,11 @@ export async function handleTool(
 
     case "update_stock_journal": {
       const stockJournalArgs = args as Parameters<typeof updateStockJournalXml>[0];
-      await assertVoucherUnambiguous("Stock Journal", stockJournalArgs.voucherNumber, stockJournalArgs.date);
+      await assertVoucherUnambiguous(
+        stockJournalArgs.voucherType ?? "Stock Journal",
+        stockJournalArgs.voucherNumber,
+        stockJournalArgs.date
+      );
       const xml = updateStockJournalXml(stockJournalArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
@@ -2356,6 +2509,12 @@ export async function handleTool(
     case "query_sql": {
       const { sql } = args as { sql: string };
       return await runSql(sql);
+    }
+
+    case "get_audit_log": {
+      const { limit, toolFilter } = args as { limit?: number; toolFilter?: string };
+      const entries = readAuditLog(limit ?? 50, toolFilter);
+      return JSON.stringify(entries, null, 2);
     }
 
     default:

@@ -50,6 +50,22 @@ export async function tallyRequest(xml: string): Promise<unknown> {
   // Tally reports request-level errors inside the XML body itself, not via HTTP status.
   const lineError = parsed?.ENVELOPE?.BODY?.DATA?.LINEERROR ?? parsed?.ENVELOPE?.LINEERROR;
   if (lineError) {
+    // "Could not find Company ''" (empty name) is Tally's generic response when the
+    // process bound to TALLY_URL has no company open at all — confirmed live: this
+    // happens when multiple tally.exe processes are running (e.g. a shared server with
+    // several sessions) and whichever one happens to hold the configured port isn't the
+    // one with a company loaded. A real "wrong company name" error has a non-empty name
+    // between the quotes, so only match the empty-name case here.
+    if (/could not find company\s*(['"])\1/i.test(String(lineError))) {
+      throw new TallyConnectionError(
+        `Tally responded but reports no company open at ${TALLY_URL} (got: "${lineError}"). ` +
+          `This usually means the TallyPrime process this connector is talking to isn't the ` +
+          `one you have open on screen — common when more than one TallyPrime process is ` +
+          `running (e.g. a shared/terminal server, or an old window left open). Check what's ` +
+          `actually listening on this port, or move your company's gateway to a different ` +
+          `port (F1 > Settings > Connectivity) and update TALLY_URL to match.`
+      );
+    }
     throw new TallyConnectionError(`Tally reported an error: ${lineError}`);
   }
 

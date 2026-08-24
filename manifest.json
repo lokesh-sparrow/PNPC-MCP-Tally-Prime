@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
@@ -73,7 +73,8 @@
     { "name": "delete_voucher", "description": "Permanently delete an existing voucher from TallyPrime, with no trace left behind" },
     { "name": "sync_to_sql", "description": "Pull ledgers, groups, and stock items into this session's in-memory SQL cache for fast ad-hoc querying" },
     { "name": "sync_vouchers_to_sql", "description": "Pull voucher headers for one date range into this session's in-memory SQL cache" },
-    { "name": "query_sql", "description": "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql" }
+    { "name": "query_sql", "description": "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql" },
+    { "name": "get_audit_log", "description": "Read this connector's append-only audit log of every tool call made through it" }
   ],
   "keywords": ["tally", "tallyprime", "accounting", "erp", "mcp"],
   "compatibility": {

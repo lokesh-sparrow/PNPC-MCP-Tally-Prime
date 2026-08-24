@@ -7,40 +7,49 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Stock Journal" ACTION="Alter">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="{{ voucherType }}" ACTION="Alter">
             <DATE>{{ tallyDate }}</DATE>
-            <VOUCHERTYPENAME>Stock Journal</VOUCHERTYPENAME>
+            <VOUCHERTYPENAME>{{ voucherType }}</VOUCHERTYPENAME>
             <NARRATION>{{ narration }}</NARRATION>
-            <INVENTORYENTRIESIN.LIST>
-              <STOCKITEMNAME>{{ destItem }}</STOCKITEMNAME>
+            {% for cost in additionalCosts %}<LEDGERENTRIES.LIST>
+              <ADDLALLOCTYPE>{{ cost.allocationType }}</ADDLALLOCTYPE>
+              <LEDGERNAME>{{ cost.ledgerName }}</LEDGERNAME>
               <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-              <RATE>{{ destRate }}/{{ unit }}</RATE>
-              <AMOUNT>-{{ destAmount }}</AMOUNT>
-              <ACTUALQTY>{{ destQty }} {{ unit }}</ACTUALQTY>
-              <BILLEDQTY>{{ destQty }} {{ unit }}</BILLEDQTY>
-              {% if godown %}<BATCHALLOCATIONS.LIST>
-                <GODOWNNAME>{{ godown }}</GODOWNNAME>
-                <BATCHNAME>Primary Batch</BATCHNAME>
-                <AMOUNT>-{{ destAmount }}</AMOUNT>
-                <ACTUALQTY>{{ destQty }} {{ unit }}</ACTUALQTY>
-                <BILLEDQTY>{{ destQty }} {{ unit }}</BILLEDQTY>
+              <AMOUNT>-{{ cost.amount }}</AMOUNT>
+            </LEDGERENTRIES.LIST>
+            {% endfor %}
+            {% for dest in destinations %}<INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>{{ dest.stockItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>{{ dest.rate }}/{{ dest.unit }}</RATE>
+              <AMOUNT>-{{ dest.amount }}</AMOUNT>
+              <ACTUALQTY>{{ dest.qty }} {{ dest.unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ dest.qty }} {{ dest.unit }}</BILLEDQTY>
+              {% if dest.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ dest.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ dest.batchName }}</BATCHNAME>
+                <AMOUNT>-{{ dest.amount }}</AMOUNT>
+                <ACTUALQTY>{{ dest.qty }} {{ dest.unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ dest.qty }} {{ dest.unit }}</BILLEDQTY>
               </BATCHALLOCATIONS.LIST>{% endif %}
             </INVENTORYENTRIESIN.LIST>
-            <INVENTORYENTRIESOUT.LIST>
-              <STOCKITEMNAME>{{ sourceItem }}</STOCKITEMNAME>
+            {% endfor %}
+            {% for src in sources %}<INVENTORYENTRIESOUT.LIST>
+              <STOCKITEMNAME>{{ src.stockItem }}</STOCKITEMNAME>
               <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-              <RATE>{{ sourceRate }}/{{ unit }}</RATE>
-              <AMOUNT>{{ sourceAmount }}</AMOUNT>
-              <ACTUALQTY>{{ sourceQty }} {{ unit }}</ACTUALQTY>
-              <BILLEDQTY>{{ sourceQty }} {{ unit }}</BILLEDQTY>
-              {% if godown %}<BATCHALLOCATIONS.LIST>
-                <GODOWNNAME>{{ godown }}</GODOWNNAME>
-                <BATCHNAME>Primary Batch</BATCHNAME>
-                <AMOUNT>{{ sourceAmount }}</AMOUNT>
-                <ACTUALQTY>{{ sourceQty }} {{ unit }}</ACTUALQTY>
-                <BILLEDQTY>{{ sourceQty }} {{ unit }}</BILLEDQTY>
+              <RATE>{{ src.rate }}/{{ src.unit }}</RATE>
+              <AMOUNT>{{ src.amount }}</AMOUNT>
+              <ACTUALQTY>{{ src.qty }} {{ src.unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ src.qty }} {{ src.unit }}</BILLEDQTY>
+              {% if src.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ src.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ src.batchName }}</BATCHNAME>
+                <AMOUNT>{{ src.amount }}</AMOUNT>
+                <ACTUALQTY>{{ src.qty }} {{ src.unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ src.qty }} {{ src.unit }}</BILLEDQTY>
               </BATCHALLOCATIONS.LIST>{% endif %}
             </INVENTORYENTRIESOUT.LIST>
+            {% endfor %}
           </VOUCHER>
         </TALLYMESSAGE>
       </REQUESTDATA>

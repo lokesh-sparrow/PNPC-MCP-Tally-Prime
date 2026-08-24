@@ -98,7 +98,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (46 total)
+## Available tools (47 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -129,8 +129,8 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `create_voucher` | `voucherType`, `date`, `narration?`, `debitLedger`/`creditLedger`/`amount` (simple 2-leg) **or** `entries?` (3+ legs), plus `debitBillName?`, `debitBillType?`, `creditBillName?`, `creditBillType?`, `debitCostCentre?`, `creditCostCentre?`, `costCategory?` | Creates a Payment/Receipt/Journal/Contra voucher — either a simple debit+credit pair, or any number of lines via `entries` (e.g. one payment split across three expense ledgers). Bill-wise allocation (`New Ref` / `Agst Ref`) requires `maintainBillWise` to have been set on the ledger |
 | `update_voucher` | `voucherType`, `voucherNumber`, `date`, `narration?`, `debitLedger`/`creditLedger`/`amount` **or** `entries?` | Replaces an existing voucher's entries in place — matched by type + date + voucher number |
 | `delete_voucher` | `voucherType`, `voucherNumber`, `date` | Permanently deletes a voucher — no trace left, distinct from cancelling (which keeps it visible, marked Cancelled) |
-| `create_stock_journal` | `date`, `narration?`, `sourceItem`, `sourceQty`, `sourceRate`, `destItem`, `destQty`, `destRate`, `unit`, `godown?`, `voucherNumber?` | Creates a Stock Journal voucher moving inventory from one stock item to another (transfer or simple conversion). Inventory-only, no ledger entries |
-| `update_stock_journal` | Same fields as `create_stock_journal`, plus required `voucherNumber` | Replaces an existing Stock Journal's source/destination lines in place |
+| `create_stock_journal` | `date`, `narration?`, `sources` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `destinations` (same shape), `additionalCosts?` (array of `ledgerName`, `amount`, `allocationType?`), `voucherType?`, `voucherNumber?` | Creates a Stock Journal (or Manufacturing Journal, via `voucherType`) voucher moving inventory from one or more source items to one or more destination items — supports multiple raw materials in and multiple finished/by-products out in a single voucher, plus optional additional costs (labour, freight) folded into the produced items' valuation. Inventory-only, no ledger balance effect from `additionalCosts` itself — see the note below |
+| `update_stock_journal` | Same fields as `create_stock_journal`, plus required `voucherNumber` | Replaces an existing Stock Journal/Manufacturing Journal's source/destination lines in place |
 | `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Creates a real item-invoice Sales voucher — stock item lines with quantity/rate/discount, each posted to its own Sales ledger, grouped into one VAT line per distinct rate. Distinct from `create_voucher`, which has no stock item support. `voucherNumber`: some Tally configurations stop auto-numbering item-invoice vouchers via the XML gateway (confirmed live) — pass it explicitly if creation fails with a blank `EXCEPTIONS:1`. **Note:** using the *same* party ledger/stock item in both a Sales and a Purchase invoice can make it return `Cannot be deleted!` afterward — a Tally **Company Data → Rewrite** clears this (not a permanent lock) |
 | `update_sales_invoice` | Same fields as `create_sales_invoice`, plus required `voucherNumber` | Replaces an existing Sales invoice's item lines/party/narration in place, instead of delete+recreate |
 | `create_purchase_invoice` | Same shape as `create_sales_invoice`, with `purchaseLedger` per item instead of `salesLedger` | Creates a real item-invoice Purchase voucher — the buying-side mirror of `create_sales_invoice`. Same dual-role deletion caveat applies |
@@ -141,6 +141,8 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `update_debit_note` | Same fields as `create_debit_note`, plus required `voucherNumber` | Replaces an existing Debit Note's item lines in place |
 | `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher recording a counted quantity, so Tally shows the shortage/excess variance in stock reports. Inventory-only, zero value — doesn't post any accounting write-off itself. **Extrapolated** from Tally's documented schema — verify after use |
 | `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
+
+> ℹ️ **`additionalCosts` on `create_stock_journal`/`update_stock_journal`, confirmed live** (both via direct API testing and by cross-checking a manually-created voucher's exported data): this does **not** post a real transaction against the named ledger — its balance stays unchanged. It's a costing/valuation instruction only, telling Tally's stock valuation reports to fold that amount into the produced item's effective cost. The actual expense (e.g. paying labour) still needs recording separately, e.g. via `create_voucher`.
 
 > ⚠️ **Voucher type collision, confirmed live:** Tally's Alter/Delete lookup
 > (`update_voucher`, `update_sales_invoice`, `update_purchase_invoice`,
@@ -167,7 +169,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `create_godown` | `name`, `parent?` | Creates a Godown/Location, optionally nested under a parent godown — pass the parent's plain name, not a dotted path |
 | `create_cost_category` | `name`, `allocateToRevenue?`, `allocateToNonRevenue?` | Creates a Cost Category (grouping of cost centres) |
 | `create_cost_centre` | `name`, `category?`, `parent?` | Creates a Cost Centre for tagging voucher entries (see `create_voucher`'s cost centre fields) |
-| `create_voucher_type` | `name`, `oldName?`, `parent`, `numberingMethod?`, `abbreviation?`, `preventDuplicates?`, `extraFields?` | Creates a custom Voucher Type derived from a base type (e.g. `'Bank Payment'` from `'Payment'`) — or renames/reconfigures an existing one if `oldName` is passed |
+| `create_voucher_type` | `name`, `oldName?`, `parent`, `numberingMethod?`, `abbreviation?`, `preventDuplicates?`, `useAsManufacturingJournal?`, `extraFields?` | Creates a custom Voucher Type derived from a base type (e.g. `'Bank Payment'` from `'Payment'`, or a proper `'Manufacturing Journal'` type from `'Stock Journal'` via `useAsManufacturingJournal`) — or renames/reconfigures an existing one if `oldName` is passed. Pass the resulting name as `voucherType` to `create_stock_journal`/`update_stock_journal` to post against it |
 | `delete_master` | `collection`, `names` | Deletes one or more masters of any type — `LEDGER`, `GROUP`, `STOCKGROUP`, `STOCKITEM`, `VOUCHERTYPE`, `UNIT`, `GODOWN`, `COSTCATEGORY`, `COSTCENTRE`, etc. — by exact name |
 
 > ⚠️ `create_ledger` / `update_voucher` / `delete_stock_item` / `delete_master` /
@@ -209,11 +211,27 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 > querying — don't run `query_sql` against a cache that spans a company
 > switch, since the rows won't be distinguishable by company.
 
+### Audit & permissions
+
+| Tool | Input | Output |
+|---|---|---|
+| `get_audit_log` | `limit?` (default 50), `toolFilter?` | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, and outcome (`success`/`error`/`denied`) |
+
+Every tool call — read or write — is appended to a local JSONL log file
+(never rewritten or truncated, only appended to), so there's always a
+plain-text record of exactly what an agent did against this Tally company.
+Write operations can also be locked down before an agent ever touches them,
+via the environment variables below — see the table for `TALLY_PERMISSION_MODE`
+and `TALLY_DISABLED_TOOLS`.
+
 ## Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `TALLY_URL` | `http://localhost:9000` | Tally's HTTP gateway address |
+| `TALLY_PERMISSION_MODE` | `read_write` | Set to `read_only` to block every write tool before it reaches Tally — the call fails immediately with a clear denial, logged to the audit log as `denied` |
+| `TALLY_DISABLED_TOOLS` | _(unset)_ | Comma-separated exact tool names to block regardless of mode, e.g. `delete_voucher,delete_master` to allow writes but forbid deletion |
+| `TALLY_AUDIT_LOG_PATH` | `audit.log.jsonl` next to the installed package | Where the append-only audit log is written. Point multiple connector instances at one shared path if you want a single combined log |
 | `PORT` | `3939` | Port for `npm run start:http` (remote mode only) |
 | `TALLY_MCP_TOKEN` | _(unset)_ | Bearer token required on the HTTP server's `/mcp` endpoint if set (remote mode only) |
 
@@ -250,15 +268,17 @@ mcpb pack . PNPC-MCP-Tally-Prime.mcpb
 
 ## Troubleshooting
 
+The most common issues at a glance:
+
 - **"Could not reach TallyPrime"** — Tally isn't running, or the gateway isn't enabled on port 9000.
 - **"Tally returned an empty response"** — Tally is running but no company is open.
+- **A write call returns `CREATED:0`/`EXCEPTIONS:1` with no error text** — most often a missing `godown` on a company with location tracking enabled.
 - **`create_ledger` / `create_voucher` fails** — parent group / ledger names must match Tally *exactly* (case- and whitespace-sensitive).
-- **Clicking "Install Extension" and picking the `.mcpb` produces no dialog, no error, just the same screen:** this has been an inconsistent behavior on some Claude Desktop builds. Check `%APPDATA%\Claude\logs\main.log` for a fresh `Handling DXT/MCPB file: <path>` line right after your attempt:
-  ```powershell
-  Select-String "Handling DXT/MCPB file" "$env:APPDATA\Claude\logs\main.log" | Select-Object -Last 5
-  ```
-  - If it's logged but nothing else happens, a confirmation dialog may be rendering off-screen (rare, multi-monitor/remote-desktop setups) — check other windows.
-  - If it's **not** logged at all, use **Install Unpacked Extension** on the same Extensions → Advanced settings screen instead. Download the "Source code (zip)" from the [latest release](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest), extract it, and point the picker at that folder — that path has been the more reliable one.
+
+For the full FAQ and every other confirmed-live gotcha (shared-server port
+conflicts, silent write failures, deletion quirks, voucher-numbering
+surprises, the audit log, extension install issues, and more), see
+**[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
 
 ## Project structure
 
@@ -268,8 +288,10 @@ src/
   clean.ts        Normalizes Tally's raw XML->JSON into predictable JSON
   templates.ts    Renders the Nunjucks XML templates in templates/
   db.ts           PGLite SQL cache: sync_to_sql / sync_vouchers_to_sql / query_sql
+  audit.ts        Append-only JSONL audit log (every tool call, read or write)
+  permissions.ts  Write-scoping via TALLY_PERMISSION_MODE / TALLY_DISABLED_TOOLS
   tools.ts        MCP tool definitions + XML request builders
-  server.ts       Shared MCP Server construction (used by both entry points)
+  server.ts       Shared MCP Server construction (used by both entry points) — wires audit logging + permission checks around every call
   index.ts        stdio entry point (local Claude Desktop)
   http-server.ts  HTTP entry point (remote clients)
 templates/
@@ -283,6 +305,7 @@ manifest.json     Claude Desktop Extension manifest (manifest_version 0.3)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — request flow, file responsibilities
 - [docs/TALLY_XML_GUIDE.md](docs/TALLY_XML_GUIDE.md) — how Tally's XML gateway works, gotchas
 - [docs/TOOLS.md](docs/TOOLS.md) — full tool reference + how to add a new tool
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — full FAQ + every confirmed-live gotcha, by category
 - [docs/SQL_CACHE.md](docs/SQL_CACHE.md) — the PGLite SQL cache, schema, examples
 - [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) — running as a remote HTTP server
 - [docs/EXTENSION_PACKAGING.md](docs/EXTENSION_PACKAGING.md) — packaging as a Claude Desktop Extension

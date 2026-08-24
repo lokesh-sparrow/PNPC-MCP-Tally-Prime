@@ -20,6 +20,7 @@ All dates are `DD-MM-YYYY` unless stated otherwise.
 | `get_stock_summary` | `asOf` | Stock Summary as of a date |
 | `get_bills_receivable` | `asOf` | Outstanding receivables as of a date |
 | `get_bills_payable` | `asOf` | Outstanding payables as of a date |
+| `get_audit_log` | `limit?` (default 50), `toolFilter?` | Reads entries from the local append-only audit log (`audit.ts`) — every tool call through this server, read or write, with timestamp/args/outcome. See "Audit trail & permission scoping" below. |
 
 ## Write tools
 
@@ -33,9 +34,9 @@ All dates are `DD-MM-YYYY` unless stated otherwise.
 | `create_godown` | `name`, `parent?` | Creates a Godown/Location. Pass the parent's plain name, not a dotted path — `"MAIN LOCATION.DUBAI"` is invalid, `parent: "MAIN LOCATION"` + `name: "DUBAI"` is correct (confirmed live). |
 | `create_cost_category` | `name`, `allocateToRevenue?` (default true), `allocateToNonRevenue?` (default true) | Creates a Cost Category (`<COSTCATEGORY>`) — a grouping of cost centres. |
 | `create_cost_centre` | `name`, `category?`, `parent?` | Creates a Cost Centre (`<COSTCENTRE>`) for tagging voucher entries via `create_voucher`'s `debitCostCentre`/`creditCostCentre`/`costCentre` fields. `category` defaults to Tally's "Primary Cost Category" if omitted. |
-| `create_voucher_type` | `name`, `oldName?`, `parent`, `numberingMethod?`, `abbreviation?`, `preventDuplicates?`, `extraFields?` | Creates a custom `<VOUCHERTYPE>` derived from a base type (e.g. `parent: "Payment"` for a new "Bank Payment" type) — or renames/reconfigures an existing one if `oldName` is passed. `parent` must be an exact existing voucher type name (check `get_voucher_types`). Verified live: create, use in a real voucher end-to-end, rename via `oldName`, delete via `delete_master`. |
+| `create_voucher_type` | `name`, `oldName?`, `parent`, `numberingMethod?`, `abbreviation?`, `preventDuplicates?`, `useAsManufacturingJournal?`, `extraFields?` | Creates a custom `<VOUCHERTYPE>` derived from a base type (e.g. `parent: "Payment"` for a new "Bank Payment" type, or `parent: "Stock Journal"` + `useAsManufacturingJournal: true` for a real Manufacturing Journal type — sets `<ASMFGJRNL>Yes</ASMFGJRNL>`) — or renames/reconfigures an existing one if `oldName` is passed. `parent` must be an exact existing voucher type name (check `get_voucher_types`). Verified live: create, use in a real voucher end-to-end, rename via `oldName`, delete via `delete_master`. **Confirmed live:** a new custom type created without `numberingMethod` set can accept vouchers with a completely blank voucher number (not even `"1"`) — pass `numberingMethod: "Automatic"` explicitly, or you can only reference the resulting vouchers by date + empty-string voucher number. |
 | `create_voucher` | `voucherType`, `date`, `narration?`, `debitLedger`/`creditLedger`/`amount` (2-leg) or `entries?` (N legs), `debitBillName?`, `debitBillType?`, `creditBillName?`, `creditBillType?` | Creates a voucher (Payment, Receipt, Journal, Contra, ...) with 2 or more ledger lines. Pass `entries: [{ledgerName, amount, type: "debit"|"credit", billName?, billType?, costCentre?, costCategory?}]` for 3+ legs (e.g. one payment split across several expense ledgers) — validated client-side to balance before it ever reaches Tally. `debitBillType`/`creditBillType` is `"New Ref"` (open a new bill) or `"Agst Ref"` (settle an existing one by exact bill reference name) — only takes effect if the ledger has `maintainBillWise` enabled. |
-| `create_stock_journal` | `date`, `narration?`, `sourceItem`, `sourceQty`, `sourceRate`, `destItem`, `destQty`, `destRate`, `unit`, `godown?`, `voucherNumber?` | Creates a Stock Journal voucher moving inventory from one item to another. Inventory-only (no ledger legs). Uses Tally's real native schema — separate `INVENTORYENTRIESIN.LIST` (destination) / `INVENTORYENTRIESOUT.LIST` (source), not the single-list pattern other voucher types use. |
+| `create_stock_journal` | `date`, `narration?`, `sources` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `destinations` (same shape), `additionalCosts?` (array of `ledgerName`, `amount`, `allocationType?`), `voucherType?` (default `"Stock Journal"`), `voucherNumber?` | Creates a Stock Journal (or Manufacturing Journal, via `voucherType`) voucher moving inventory from one or more source items to one or more destination items in a single voucher (multi-raw-material-in, multi-finished/by-product-out). Uses Tally's real native schema — separate `INVENTORYENTRIESIN.LIST` (destinations) / `INVENTORYENTRIESOUT.LIST` (sources), each looped, not the single-list pattern other voucher types use. `additionalCosts` emits a voucher-level `LEDGERENTRIES.LIST` with `ADDLALLOCTYPE`/`LEDGERNAME`/`AMOUNT` — confirmed live (cross-checked against a real manually-created voucher's exported JSON) that this is a costing/valuation instruction only, **not** a real posting against that ledger; its balance doesn't change. Live-tested end-to-end for multi-source/multi-destination on a real company. |
 | `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (`stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Creates a real item-invoice Sales voucher — `ALLINVENTORYENTRIES.LIST` per stock item line (each with its own nested `ACCOUNTINGALLOCATIONS.LIST` to a Sales ledger, optional per-line `DISCOUNT` and `BATCHALLOCATIONS.LIST`), plus one `LEDGERENTRIES.LIST` VAT line **per distinct (vatLedger, vatRatePercent) pair** across all items — so a multi-rate invoice gets multiple tax lines, each correctly summed. Reverse-engineered from a real manually-created invoice. **Confirmed live:** if the company has multi-godown tracking enabled, omitting `godown` on an item line fails silently (`CREATED:0`, `EXCEPTIONS:1`, no error text). **Also confirmed live:** some Tally configurations stop auto-numbering item-invoice vouchers via the XML gateway entirely — the real error ("Voucher No. is missing") only surfaces through Tally's own Import Data UI, not the gateway response. If creation fails with a blank `EXCEPTIONS:1`, pass `voucherNumber` explicitly (check `get_vouchers` for the next free number of that type). **Dual-role deletion caveat:** a ledger or stock item used in only a Sales invoice, or only a Purchase invoice, deletes cleanly afterward. Using the **same** master in *both* a Sales and a Purchase item-invoice leaves it permanently returning `Cannot be deleted!` via the API, even at zero balance — not a permanent lock, **Company Data → Rewrite** inside Tally clears it (confirmed live). When deleting a voucher and a master it referenced together, delete the voucher first and confirm success before deleting the master — doing both in one parallel batch can race (confirmed live). |
 | `update_sales_invoice` | Same fields as `create_sales_invoice`, plus required `voucherNumber` | Replaces an existing Sales invoice's item lines, party, and narration in place (`ACTION="Alter"`) instead of delete+recreate. Matched by date + voucher number. |
 | `create_purchase_invoice` | `date`, `narration?`, `partyLedger`, `items` (`stockItem`, `qty`, `rate`, `unit`, `purchaseLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Buying-side mirror of `create_sales_invoice` — same shape with the debit/credit convention flipped (inward stock + expense/input-VAT increase = `ISDEEMEDPOSITIVE=Yes` + negative amount; creditor liability increase = `No` + positive amount). Verified live against a real Purchase Accounts + Input VAT ledger, including a live-verified Stock Summary check (buy 100, sell 40 of the same item → closing balance 60, exactly right). Same multi-rate-tax-group, godown, voucherNumber, and dual-role deletion caveats as `create_sales_invoice` apply. |
@@ -72,6 +73,29 @@ type doesn't match what actually exists. There is no safe way to force the
 operation through the API when a real collision exists — resolve it in
 Tally (renumber one of the colliding vouchers) or edit/delete the voucher
 directly in Tally's UI instead.
+
+### Audit trail & permission scoping
+
+Every tool call — read or write — passes through `server.ts`'s
+`CallToolRequestSchema` handler, which wraps `handleTool` with two things:
+
+1. **Permission check** (`permissions.ts`, before `handleTool` even runs): if
+   `TALLY_PERMISSION_MODE=read_only`, any tool not in `server.ts`'s
+   `READ_ONLY_TOOLS` set is denied outright — never reaches `handleTool`,
+   never builds XML, never touches Tally. `TALLY_DISABLED_TOOLS` (comma-
+   separated exact names) denies specific tools regardless of mode.
+2. **Audit logging** (`audit.ts`, after `handleTool` resolves or throws):
+   appends one JSON line — `ts`, `tool`, `readOnly`, `outcome`
+   (`success`/`error`/`denied`), `detail` (result text or error message,
+   truncated to 500 chars), `durationMs`, `args` — to a local file, opened in
+   append mode every time (`appendFileSync`), never rewritten or truncated.
+   A logging failure is swallowed, not surfaced, so it can never block the
+   underlying Tally operation. `get_audit_log` reads this file back for
+   review from within the assistant itself.
+
+This directly addresses the two original gaps (tight permission scopes,
+append-only audit trail) an external reviewer flagged for write-back
+operations against vouchers/ledgers.
 
 ## Context switching tools
 
