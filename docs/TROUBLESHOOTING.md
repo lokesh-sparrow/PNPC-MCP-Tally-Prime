@@ -1,7 +1,7 @@
 # Troubleshooting & FAQ
 
-Every item below is either confirmed live against a real TallyPrime instance,
-or explicitly marked as extrapolated/unverified. If you hit something not
+Every item below has been verified against a real TallyPrime instance,
+or is explicitly marked as extrapolated/unverified. If you hit something not
 listed here, check [docs/TOOLS.md](TOOLS.md) for the specific tool's own
 notes first — this doc covers cross-cutting issues that aren't obvious from
 a single tool's description.
@@ -28,7 +28,7 @@ company/period affects every other caller using the same Tally instance.
 
 **Can I run this alongside another Tally MCP connector, or on a shared server with other Tally users?**
 Yes, but each needs its **own gateway port** — see
-[Port conflicts on a shared server](#port-conflicts-on-a-shared-server-confirmed-live) below.
+[Port conflicts on a shared server](#port-conflicts-on-a-shared-server) below.
 
 **A write call returned success (`CREATED:1`) — how do I know it actually did what I asked, not something else?**
 Check `get_audit_log` (records exact args + outcome for every call) and
@@ -55,7 +55,7 @@ Tally is running and the gateway is reachable, but **no company is open**.
 Open one (File → Select Company) and retry.
 
 ### "Tally responded but reports no company open" / raw `Could not find Company ''`
-Confirmed live: this is different from the empty-response case above — Tally
+This is different from the empty-response case above — Tally
 *did* respond, but the specific `tally.exe` process bound to `TALLY_URL`'s
 port has no company loaded, even though you can see a company open on
 screen. This means **a different Tally process** — not the one you're
@@ -76,7 +76,7 @@ every `tally.exe` on a shared server), or move your own company's gateway to
 a different port (`F1 → Settings → Connectivity`) and update `TALLY_URL` to
 match.
 
-### Port conflicts on a shared server (confirmed live)
+### Port conflicts on a shared server
 Port 9000 is Tally's own default, and this connector's default too — on a
 machine with multiple Tally users/connectors, only one process can bind a
 given port; whoever grabbed it first "wins," and it may not be the
@@ -92,7 +92,7 @@ server:
 
 ### `CREATED:0`, `EXCEPTIONS:1`, no error text at all
 This is the hardest failure mode — Tally's gateway gives zero explanation.
-Confirmed live, the most common cause: **the company has godown/batch
+The most common cause: **the company has godown/batch
 tracking enabled, and an inventory voucher line was sent without a
 `godown`.** `create_stock_journal`, `create_physical_stock`, and the
 item-invoice tools all treat `godown` as optional in the schema, but if the
@@ -103,7 +103,7 @@ detect this from the API response alone — if you hit a blank `EXCEPTIONS:1`,
 try again with an explicit godown before assuming something else is wrong.
 
 ### Item-invoice voucher types (Sales/Purchase/Credit Note/Debit Note) stop auto-numbering
-Confirmed live: some Tally configurations (seen after a **Company Data →
+Some Tally configurations (seen after a **Company Data →
 Rewrite** in at least one case) stop assigning voucher numbers to
 item-invoice-mode voucher types through the XML gateway specifically — the
 real error ("Voucher No. is missing") only shows in Tally's own Import Data
@@ -113,7 +113,7 @@ the next free number of that voucher type) on every create call for that
 voucher type going forward.
 
 ### A brand-new custom voucher type accepts vouchers with **no voucher number at all**
-Confirmed live: `create_voucher_type` without an explicit `numberingMethod`
+`create_voucher_type` without an explicit `numberingMethod`
 can leave the new type accepting vouchers with a completely blank number —
 not `"1"`, not anything referenceable. You can still delete/alter such a
 voucher by passing an empty string as `voucherNumber`, but you can't
@@ -124,7 +124,7 @@ against (e.g. a Manufacturing Journal type via `useAsManufacturingJournal`).
 ### `create_physical_stock` corrupted stock quantities on versions before this fix
 **If you used `create_physical_stock`/`update_physical_stock` before this
 note was added, check the resulting stock item's closing balance in Tally —
-it may be wrong.** Confirmed live: an earlier version of this template used
+it may be wrong.** An earlier version of this template used
 `ISDEEMEDPOSITIVE=No` plus a per-line `ISPHYSICALQTYENTERED` flag that
 doesn't actually control this behavior — the real result was the item's
 reported closing balance flipping to a nonsensical negative number instead
@@ -132,13 +132,13 @@ of the counted quantity (e.g. counting 95 against a book balance of 102
 produced a closing balance of `-100`, not `95`). Rebuilt against a genuine
 Tally-exported XML template (`DIFFACTUALQTY=Yes` at the voucher level,
 `ISDEEMEDPOSITIVE=Yes`, no `RATE`/`AMOUNT`/`BILLEDQTY` at all) and
-re-verified live: counting 95 of an item with 100 in stock now correctly
+re-verified: counting 95 of an item with 100 in stock now correctly
 closes it at 95. If a stock item's balance looks wrong after a physical
 count made with an older version, recheck it and correct with a fresh
 `create_physical_stock` call or manually in Tally.
 
 ### `additionalCosts` on a Stock/Manufacturing Journal doesn't change the ledger's balance
-This is expected, not a bug — confirmed live twice (once via direct API
+This is expected, not a bug — verified twice (once via direct API
 testing, once by cross-checking a manually-created voucher's own exported
 JSON). The named ledger's balance genuinely does not move. `additionalCosts`
 is a costing/valuation instruction, telling Tally's stock reports to fold
@@ -147,7 +147,7 @@ accounting transaction. If labour/freight was actually paid, record that
 separately with `create_voucher`.
 
 ### `create_unit` fails with "Master name contains invalid characters"
-Confirmed live: a simple unit's symbol can't contain whitespace (e.g.
+A simple unit's symbol can't contain whitespace (e.g.
 `"Box Unit"` is rejected, `"Box"` isn't). This tool now checks client-side
 and throws a clear error before the call ever reaches Tally — if you still
 hit Tally's own raw version of this message, it means the name came from
@@ -159,7 +159,7 @@ display name (the `symbol` argument when `baseUnit` is set, e.g. `"Box of
 ## Deleting things
 
 ### `delete_master` returns `LINEERROR: "Cannot be deleted!"` on a stock item/ledger with zero transactions
-Confirmed live: a ledger or stock item used in **both** a Sales-side and a
+A ledger or stock item used in **both** a Sales-side and a
 Purchase-side item-invoice (Sales + Purchase, or Credit Note + Debit Note)
 can get stuck permanently reporting "Cannot be deleted!" via the API even
 after every referencing voucher is gone. This is not a real permanent lock —
@@ -167,24 +167,24 @@ running **Company Data → Rewrite** inside Tally itself clears it. Retrying
 the delete call does not help; only the Rewrite does.
 
 ### Deleting a voucher and a master it referenced, in the same batch
-Confirmed live: deleting a voucher and then immediately deleting a master
+Deleting a voucher and then immediately deleting a master
 that voucher referenced, in the same parallel batch, can race — the master
 delete reaching Tally before the voucher delete has actually committed,
 causing it to fail. Delete the voucher first, confirm the response, *then*
 delete the master.
 
 ### Deleting/altering hit the wrong voucher
-See [Voucher type collision](#voucher-type-collision-confirmed-live) below — this is a
+See [Voucher type collision](#voucher-type-collision) below — this is a
 lookup ambiguity, not a delete-specific bug, and every `update_*`/
 `delete_voucher` tool now refuses rather than risk it.
 
 ## Voucher matching & safety
 
-### Voucher type collision (confirmed live)
+### Voucher type collision
 Tally's Alter/Delete lookup (`TAGNAME="Voucher Number"`/`TAGVALUE`) matches
 by **date + voucher number only** — the voucher type you pass is not used to
 scope the match, even though each type numbers independently (a Sales #4 and
-a Purchase #4 can both legitimately exist on the same date). Confirmed live:
+a Purchase #4 can both legitimately exist on the same date). In practice,
 this silently altered/renumbered an unrelated voucher of a different type
 that happened to share the same number and date, with no error. Every
 `update_*` tool and `delete_voucher` now calls an internal
@@ -198,7 +198,7 @@ around the refusal.
   etc.) must match what exists in Tally **exactly**, including case and
   whitespace. There's no fuzzy matching anywhere in the XML gateway.
 - `create_godown`'s `parent` must be the parent's plain name, not a dotted
-  path — confirmed live: `"MAIN LOCATION.DUBAI"` is rejected,
+  path — `"MAIN LOCATION.DUBAI"` is rejected,
   `parent: "MAIN LOCATION"` + `name: "DUBAI"` is correct.
 - `create_group`/`create_stock_item`'s `group: "Primary"` maps to an empty
   `<PARENT>` tag internally — Tally rejects the literal string "Primary" as
@@ -221,9 +221,9 @@ around the refusal.
 - Set `TALLY_DISABLED_TOOLS` (comma-separated exact tool names, e.g.
   `delete_voucher,delete_master`, or the "Disabled tools" field in the
   Extensions settings screen) to block specific tools regardless of mode.
-- **Confirmed live: changing the Read-only mode toggle or Disabled tools
-  field in Claude Desktop's Extensions settings does NOT take effect until
-  you fully quit and reopen Claude Desktop.** Saving the settings screen is
+- **Changing the Read-only mode toggle or Disabled tools field in Claude
+  Desktop's Extensions settings does NOT take effect until you fully quit
+  and reopen Claude Desktop.** Saving the settings screen is
   not enough — verified by making a write call immediately after toggling
   read-only mode on (it succeeded, unblocked) versus after a full restart
   (it was correctly denied). This connector reads its config once at
@@ -244,7 +244,7 @@ around the refusal.
   10s request timeout.
 
 ### A port responds but isn't actually TallyPrime's gateway
-Confirmed live: **Tally's own license server (commonly port 9999) answers
+**Tally's own license server (commonly port 9999) answers
 HTTP requests with an HTML status page** — if you accidentally point
 `TALLY_URL` at it, a naive "did the request succeed" check says yes, when
 nothing about it is the actual XML gateway. `get_health_check` specifically
@@ -266,13 +266,13 @@ Treat their output as a strong starting point, not a guarantee — check the
 resulting voucher/master in Tally's own UI after use, especially:
 - `set_bill_of_materials`'s `natureOfItem` accepted values.
 - `create_material_in`/`create_material_out`'s party-ledger amount, which
-  deliberately does **not** balance against the inventory legs (confirmed
-  from the source template — this is job-work memorandum tracking, not a
+  deliberately does **not** balance against the inventory legs (based on
+  the source template — this is job-work memorandum tracking, not a
   real Dr/Cr pair) — don't mistake this for a bug if the numbers don't net
   to zero the way a normal voucher would.
 
 **Job Work In/Out Order vouchers were deliberately not built** — no
-confirmed real-world XML example was found, and there's no existing
+verified real-world XML example was found, and there's no existing
 "Order"-type voucher tool in this project to model the due-date/lot
 structure from. Guessing that structure blind risked shipping something
 broken rather than just incomplete.

@@ -60,7 +60,7 @@ Desktop runs the MCP server internally for you.
 6. It'll prompt for the **TallyPrime Gateway URL** (leave as `http://localhost:9000` unless your gateway runs elsewhere), **Read-only mode** (on by default — this connector can look but not change anything until you turn this off), and an optional **Disabled tools** list
 7. Verify by clicking the **Tools** (hammer) icon in a chat — `PNPC-MCP-Tally-Prime` should appear in the list
 
-> **Read-only mode is on by default.** A fresh install can read reports, ledgers, and vouchers immediately, but every write tool (`create_*`, `update_*`, `delete_*`) will be refused until you go to this connector's settings, turn Read-only mode off, and **fully quit and reopen Claude Desktop** (saving the settings screen alone isn't enough — confirmed live).
+> **Read-only mode is on by default.** A fresh install can read reports, ledgers, and vouchers immediately, but every write tool (`create_*`, `update_*`, `delete_*`) will be refused until you go to this connector's settings, turn Read-only mode off, and **fully quit and reopen Claude Desktop** — saving the settings screen alone isn't enough.
 
 If step 4–5 don't produce that confirmation dialog (accepted silently, nothing
 visible happens), see **Troubleshooting** below — `Install Unpacked Extension`
@@ -137,18 +137,18 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `create_material_out` | Same shape as `create_material_in` | Creates a Material Out voucher — stock sent out to a job worker. Mirror of `create_material_in`, same extrapolated caveat |
 | `create_rejections_in` | `date`, `narration?`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Rejections In voucher — goods rejected and returned to you. Inventory-only. **Extrapolated** by analogy to other inventory-only voucher shapes — no confirmed real-world example was available; verify carefully after use |
 | `create_rejections_out` | Same shape as `create_rejections_in` | Creates a Rejections Out voucher — goods you're rejecting outward. Mirror of `create_rejections_in`, same extrapolated caveat |
-| `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Creates a real item-invoice Sales voucher — stock item lines with quantity/rate/discount, each posted to its own Sales ledger, grouped into one VAT line per distinct rate. Distinct from `create_voucher`, which has no stock item support. `voucherNumber`: some Tally configurations stop auto-numbering item-invoice vouchers via the XML gateway (confirmed live) — pass it explicitly if creation fails with a blank `EXCEPTIONS:1`. **Note:** using the *same* party ledger/stock item in both a Sales and a Purchase invoice can make it return `Cannot be deleted!` afterward — a Tally **Company Data → Rewrite** clears this (not a permanent lock) |
+| `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Creates a real item-invoice Sales voucher — stock item lines with quantity/rate/discount, each posted to its own Sales ledger, grouped into one VAT line per distinct rate. Distinct from `create_voucher`, which has no stock item support. `voucherNumber`: some Tally configurations stop auto-numbering item-invoice vouchers via the XML gateway — pass it explicitly if creation fails with a blank `EXCEPTIONS:1`. **Note:** using the *same* party ledger/stock item in both a Sales and a Purchase invoice can make it return `Cannot be deleted!` afterward — a Tally **Company Data → Rewrite** clears this (not a permanent lock) |
 | `update_sales_invoice` | Same fields as `create_sales_invoice`, plus required `voucherNumber` | Replaces an existing Sales invoice's item lines/party/narration in place, instead of delete+recreate |
 | `create_purchase_invoice` | Same shape as `create_sales_invoice`, with `purchaseLedger` per item instead of `salesLedger` | Creates a real item-invoice Purchase voucher — the buying-side mirror of `create_sales_invoice`. Same dual-role deletion caveat applies |
 | `update_purchase_invoice` | Same fields as `create_purchase_invoice`, plus required `voucherNumber` | Replaces an existing Purchase invoice's item lines in place |
-| `create_credit_note` | Same shape as `create_sales_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Sales-return Credit Note — sign convention mirrors Purchase's. **Confirmed live** on a real company: returning 5 units correctly increased book quantity by 5 |
+| `create_credit_note` | Same shape as `create_sales_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Sales-return Credit Note — sign convention mirrors Purchase's. Returning 5 units correctly increases book quantity by 5 |
 | `update_credit_note` | Same fields as `create_credit_note`, plus required `voucherNumber` | Replaces an existing Credit Note's item lines in place |
-| `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. **Confirmed live** on a real company: returning 3 units correctly decreased book quantity by 3 |
+| `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. Returning 3 units correctly decreases book quantity by 3 |
 | `update_debit_note` | Same fields as `create_debit_note`, plus required `voucherNumber` | Replaces an existing Debit Note's item lines in place |
-| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). Confirmed live: counting 95 of an item with 100 in stock correctly closes it at 95. Doesn't post any monetary write-off for the shortage/excess value itself — see [Troubleshooting](docs/TROUBLESHOOTING.md) if you're on an older build than this |
+| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). Counting 95 of an item with 100 in stock correctly closes it at 95. Doesn't post any monetary write-off for the shortage/excess value itself — see [Troubleshooting](docs/TROUBLESHOOTING.md) if you're on an older build than this |
 | `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
 
-> ℹ️ **`additionalCosts` on `create_stock_journal`/`update_stock_journal`, confirmed live** (both via direct API testing and by cross-checking a manually-created voucher's exported data): this does **not** post a real transaction against the named ledger — its balance stays unchanged. It's a costing/valuation instruction only, telling Tally's stock valuation reports to fold that amount into the produced item's effective cost. The actual expense (e.g. paying labour) still needs recording separately, e.g. via `create_voucher`.
+> ℹ️ **`additionalCosts` on `create_stock_journal`/`update_stock_journal`:** this does **not** post a real transaction against the named ledger — its balance stays unchanged. It's a costing/valuation instruction only, telling Tally's stock valuation reports to fold that amount into the produced item's effective cost. The actual expense (e.g. paying labour) still needs recording separately, e.g. via `create_voucher`.
 
 > ℹ️ **Voucher type collision:** `update_voucher`, `update_sales_invoice`,
 > `update_purchase_invoice`, `update_credit_note`, `update_debit_note`,
@@ -220,7 +220,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | Tool | Input | Output |
 |---|---|---|
 | `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`, `toDate?`, `company?`, `format?` (`'json'` default or `'summary'`) | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, outcome (`success`/`error`/`denied`), and a best-effort company tag. `company` filters to one Tally company; `writesOnly` + a date range + `format: 'summary'` gives a compact reviewer-facing table instead of raw JSON — "what changed between these two dates" |
-| `get_health_check` | — | Reports whether Tally's gateway is actually reachable (not just "something answered" — confirmed live that Tally's own license server can respond on a misconfigured port with an HTML page that looks like success unless checked), which company is open, the active `TALLY_URL`, current read-only/disabled-tools state, and the audit log's file path. Always allowed, even in read-only mode |
+| `get_health_check` | — | Reports whether Tally's gateway is actually reachable (not just "something answered" — this catches cases like Tally's own license server responding on a misconfigured port with an HTML page that looks like success), which company is open, the active `TALLY_URL`, current read-only/disabled-tools state, and the audit log's file path. Always allowed, even in read-only mode |
 
 Every tool call — read or write — is appended to a local JSONL log file, so
 there's always a plain-text record of exactly what an agent did. All
@@ -239,13 +239,13 @@ Desktop's Extensions settings screen for this connector shows a **"Read-only
 mode"** toggle (on by default) and an optional **"Disabled tools"** field
 directly — no config editing required either way.
 
-> ⚠️ **Confirmed live: you must fully quit and reopen Claude Desktop after
-> changing these settings** — saving the settings screen alone does *not*
-> apply the new value. This connector runs as a long-lived child process
-> that only reads its configuration once, at startup; Claude Desktop doesn't
-> push new values into an already-running extension. Toggling "Read-only
-> mode" on and expecting it to take effect immediately will fail silently
-> (the next write still goes through) until you restart the app.
+> ⚠️ **Settings changes take effect only after you fully quit and reopen
+> Claude Desktop** — saving the settings screen alone does *not* apply the
+> new value. This connector runs as a long-lived child process that only
+> reads its configuration once, at startup; Claude Desktop doesn't push new
+> values into an already-running extension. Toggling "Read-only mode" on
+> and expecting it to take effect immediately will fail silently (the next
+> write still goes through) until you restart the app.
 
 Running this outside Claude Desktop (HTTP mode, manual config)? Use the
 environment variables in the table below instead — see `TALLY_PERMISSION_MODE`
@@ -303,7 +303,7 @@ The most common issues at a glance:
 - **A write call returns `CREATED:0`/`EXCEPTIONS:1` with no error text** — most often a missing `godown` on a company with location tracking enabled.
 - **`create_ledger` / `create_voucher` fails** — parent group / ledger names must match Tally *exactly* (case- and whitespace-sensitive).
 
-For the full FAQ and every other confirmed-live gotcha (shared-server port
+For the full FAQ and every other real-world gotcha (shared-server port
 conflicts, silent write failures, deletion quirks, voucher-numbering
 surprises, the audit log, extension install issues, and more), see
 **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
@@ -333,7 +333,7 @@ manifest.json     Claude Desktop Extension manifest (manifest_version 0.3)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — request flow, file responsibilities
 - [docs/TALLY_XML_GUIDE.md](docs/TALLY_XML_GUIDE.md) — how Tally's XML gateway works, gotchas
 - [docs/TOOLS.md](docs/TOOLS.md) — full tool reference + how to add a new tool
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — full FAQ + every confirmed-live gotcha, by category
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — full FAQ + every real-world gotcha, by category
 - [docs/SQL_CACHE.md](docs/SQL_CACHE.md) — the PGLite SQL cache, schema, examples
 - [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) — running as a remote HTTP server
 - [docs/EXTENSION_PACKAGING.md](docs/EXTENSION_PACKAGING.md) — packaging as a Claude Desktop Extension
