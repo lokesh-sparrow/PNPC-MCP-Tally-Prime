@@ -35,3 +35,11 @@ export function checkPermission(toolName: string, isReadOnly: boolean): string |
   }
   return null;
 }
+
+// For get_health_check — reports the effective config without duplicating the logic above.
+export function getPermissionStatus(): { readOnly: boolean; disabledTools: string[] } {
+  return {
+    readOnly: PERMISSION_MODE === "read_only" || READ_ONLY_TOGGLE,
+    disabledTools: Array.from(DISABLED_TOOLS),
+  };
+}

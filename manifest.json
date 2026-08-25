@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.5.0",
+  "version": "1.4.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
@@ -25,8 +25,8 @@
     "read_only_mode": {
       "type": "boolean",
       "title": "Read-only mode",
-      "description": "When on, every write tool (create/update/delete) is blocked before it ever reaches Tally. Turn this on for anyone who should only ask questions, never change data.",
-      "default": false
+      "description": "When on (the default), every write tool (create/update/delete) is blocked before it ever reaches Tally — this connector can only look, never change anything. Turn this off deliberately once you're ready to let it post vouchers or update masters. Requires fully restarting Claude Desktop to take effect.",
+      "default": true
     },
     "disabled_tools": {
       "type": "string",
@@ -101,7 +101,8 @@
     { "name": "sync_to_sql", "description": "Pull ledgers, groups, and stock items into this session's in-memory SQL cache for fast ad-hoc querying" },
     { "name": "sync_vouchers_to_sql", "description": "Pull voucher headers for one date range into this session's in-memory SQL cache" },
     { "name": "query_sql", "description": "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql" },
-    { "name": "get_audit_log", "description": "Read this connector's append-only audit log of every tool call made through it" }
+    { "name": "get_audit_log", "description": "Read this connector's append-only audit log of every tool call made through it" },
+    { "name": "get_health_check", "description": "Check whether Tally is reachable, a company is open, and what permission settings are currently active" }
   ],
   "keywords": ["tally", "tallyprime", "accounting", "erp", "mcp"],
   "compatibility": {

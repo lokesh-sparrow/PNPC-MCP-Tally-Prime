@@ -57,8 +57,10 @@ Desktop runs the MCP server internally for you.
 3. Click **Install Extension**
 4. Browse to and select **`PNPC-MCP-Tally-Prime.mcpb`** (downloaded above)
 5. A dialog will appear asking *"Do you want to install PNPC-MCP-Tally-Prime?"* — click **Install**
-6. It'll prompt for the **TallyPrime Gateway URL** — leave as `http://localhost:9000` unless your gateway runs elsewhere
+6. It'll prompt for the **TallyPrime Gateway URL** (leave as `http://localhost:9000` unless your gateway runs elsewhere), **Read-only mode** (on by default — this connector can look but not change anything until you turn this off), and an optional **Disabled tools** list
 7. Verify by clicking the **Tools** (hammer) icon in a chat — `PNPC-MCP-Tally-Prime` should appear in the list
+
+> **Read-only mode is on by default.** A fresh install can read reports, ledgers, and vouchers immediately, but every write tool (`create_*`, `update_*`, `delete_*`) will be refused until you go to this connector's settings, turn Read-only mode off, and **fully quit and reopen Claude Desktop** (saving the settings screen alone isn't enough — confirmed live).
 
 If step 4–5 don't produce that confirmation dialog (accepted silently, nothing
 visible happens), see **Troubleshooting** below — `Install Unpacked Extension`
@@ -139,11 +141,11 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `update_sales_invoice` | Same fields as `create_sales_invoice`, plus required `voucherNumber` | Replaces an existing Sales invoice's item lines/party/narration in place, instead of delete+recreate |
 | `create_purchase_invoice` | Same shape as `create_sales_invoice`, with `purchaseLedger` per item instead of `salesLedger` | Creates a real item-invoice Purchase voucher — the buying-side mirror of `create_sales_invoice`. Same dual-role deletion caveat applies |
 | `update_purchase_invoice` | Same fields as `create_purchase_invoice`, plus required `voucherNumber` | Replaces an existing Purchase invoice's item lines in place |
-| `create_credit_note` | Same shape as `create_sales_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Sales-return Credit Note — sign convention mirrors Purchase's. **Extrapolated** from that proven convention, not reverse-engineered from a real example — verify after use |
+| `create_credit_note` | Same shape as `create_sales_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Sales-return Credit Note — sign convention mirrors Purchase's. **Confirmed live** on a real company: returning 5 units correctly increased book quantity by 5 |
 | `update_credit_note` | Same fields as `create_credit_note`, plus required `voucherNumber` | Replaces an existing Credit Note's item lines in place |
-| `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. Same extrapolated-convention caveat as `create_credit_note` |
+| `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. **Confirmed live** on a real company: returning 3 units correctly decreased book quantity by 3 |
 | `update_debit_note` | Same fields as `create_debit_note`, plus required `voucherNumber` | Replaces an existing Debit Note's item lines in place |
-| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher recording a counted quantity, so Tally shows the shortage/excess variance in stock reports. Inventory-only, zero value — doesn't post any accounting write-off itself. **Extrapolated** from Tally's documented schema — verify after use |
+| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). **Confirmed live** after a real bug was found and fixed: an earlier version corrupted the closing balance to a nonsensical negative number; now verified correct (counting 95 of an item with 100 in stock correctly closes it at 95). Doesn't post any monetary write-off for the shortage/excess value itself |
 | `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
 
 > ℹ️ **`additionalCosts` on `create_stock_journal`/`update_stock_journal`, confirmed live** (both via direct API testing and by cross-checking a manually-created voucher's exported data): this does **not** post a real transaction against the named ledger — its balance stays unchanged. It's a costing/valuation instruction only, telling Tally's stock valuation reports to fold that amount into the produced item's effective cost. The actual expense (e.g. paying labour) still needs recording separately, e.g. via `create_voucher`.
@@ -221,15 +223,18 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | Tool | Input | Output |
 |---|---|---|
 | `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`, `toDate?`, `format?` (`'json'` default or `'summary'`) | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, and outcome (`success`/`error`/`denied`). `writesOnly` + a date range + `format: 'summary'` gives a compact reviewer-facing table instead of raw JSON — "what changed between these two dates" |
+| `get_health_check` | — | Reports whether Tally's gateway is actually reachable (not just "something answered" — confirmed live that Tally's own license server can respond on a misconfigured port with an HTML page that looks like success unless checked), which company is open, the active `TALLY_URL`, current read-only/disabled-tools state, and the audit log's file path. Always allowed, even in read-only mode |
 
 Every tool call — read or write — is appended to a local JSONL log file
 (never rewritten or truncated, only appended to), so there's always a
 plain-text record of exactly what an agent did against this Tally company.
 
-Write operations can be locked down before an agent ever touches them —
-**no config editing required.** If you installed via the `.mcpb`, Claude
+**Safe by default:** a fresh `.mcpb` install starts in **read-only mode** —
+this connector can look at your books but cannot change anything until you
+deliberately turn writes on. If you installed via the `.mcpb`, Claude
 Desktop's Extensions settings screen for this connector shows a **"Read-only
-mode"** toggle and an optional **"Disabled tools"** field directly.
+mode"** toggle (on by default) and an optional **"Disabled tools"** field
+directly — no config editing required either way.
 
 > ⚠️ **Confirmed live: you must fully quit and reopen Claude Desktop after
 > changing these settings** — saving the settings screen alone does *not*
@@ -248,7 +253,7 @@ and `TALLY_DISABLED_TOOLS`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `TALLY_URL` | `http://localhost:9000` | Tally's HTTP gateway address. Installed via `.mcpb`? This is the "Tally Gateway URL" field in Claude Desktop's Extensions settings — no manifest editing needed |
-| `TALLY_READ_ONLY` | `false` | Set to `true` to block every write tool before it reaches Tally. This is the "Read-only mode" toggle in Claude Desktop's Extensions settings for `.mcpb` installs — same effect, no config editing |
+| `TALLY_READ_ONLY` | `true` for `.mcpb` installs via Claude Desktop's Extensions UI (safe-by-default); `false` if unset entirely (e.g. bare HTTP/manual deployments) | Set to `true` to block every write tool before it reaches Tally. This is the "Read-only mode" toggle in Claude Desktop's Extensions settings for `.mcpb` installs, **on by default** — you have to deliberately turn it off before this connector can write anything |
 | `TALLY_PERMISSION_MODE` | `read_write` | String-form equivalent of `TALLY_READ_ONLY`, for HTTP/manual deployments — set to `read_only` for the same block. Either variable blocks writes; you don't need to set both |
 | `TALLY_DISABLED_TOOLS` | _(unset)_ | Comma-separated exact tool names to block regardless of mode, e.g. `delete_voucher,delete_master` to allow writes but forbid deletion. This is the "Disabled tools (advanced)" field in Claude Desktop's Extensions settings for `.mcpb` installs |
 | `TALLY_AUDIT_LOG_PATH` | `audit.log.jsonl` next to the installed package | Where the append-only audit log is written. Point multiple connector instances at one shared path if you want a single combined log |

@@ -15,7 +15,7 @@ const READ_ONLY_TOOLS = new Set([
   "get_profit_and_loss", "get_balance_sheet", "get_trial_balance", "get_groups",
   "get_voucher_types", "get_cost_centres", "get_stock_summary", "get_bills_receivable",
   "get_bills_payable", "get_ledger_vouchers", "sync_to_sql", "sync_vouchers_to_sql", "query_sql",
-  "set_company", "set_period", "get_audit_log",
+  "set_company", "set_period", "get_audit_log", "get_health_check",
 ]);
 
 function annotationsFor(toolName: string) {

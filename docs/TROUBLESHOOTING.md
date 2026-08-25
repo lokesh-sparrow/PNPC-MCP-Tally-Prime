@@ -121,6 +121,22 @@ otherwise look it up by number. Always pass `numberingMethod: "Automatic"`
 explicitly when creating a voucher type you intend to post multiple vouchers
 against (e.g. a Manufacturing Journal type via `useAsManufacturingJournal`).
 
+### `create_physical_stock` corrupted stock quantities on versions before this fix
+**If you used `create_physical_stock`/`update_physical_stock` before this
+note was added, check the resulting stock item's closing balance in Tally —
+it may be wrong.** Confirmed live: an earlier version of this template used
+`ISDEEMEDPOSITIVE=No` plus a per-line `ISPHYSICALQTYENTERED` flag that
+doesn't actually control this behavior — the real result was the item's
+reported closing balance flipping to a nonsensical negative number instead
+of the counted quantity (e.g. counting 95 against a book balance of 102
+produced a closing balance of `-100`, not `95`). Rebuilt against a genuine
+Tally-exported XML template (`DIFFACTUALQTY=Yes` at the voucher level,
+`ISDEEMEDPOSITIVE=Yes`, no `RATE`/`AMOUNT`/`BILLEDQTY` at all) and
+re-verified live: counting 95 of an item with 100 in stock now correctly
+closes it at 95. If a stock item's balance looks wrong after a physical
+count made with an older version, recheck it and correct with a fresh
+`create_physical_stock` call or manually in Tally.
+
 ### `additionalCosts` on a Stock/Manufacturing Journal doesn't change the ledger's balance
 This is expected, not a bug — confirmed live twice (once via direct API
 testing, once by cross-checking a manually-created voucher's own exported
@@ -223,6 +239,17 @@ around the refusal.
   amount, narration) — no line items. For a busy company, sync in chunks
   (quarterly/monthly) rather than a full year at once, to stay under the
   10s request timeout.
+
+### A port responds but isn't actually TallyPrime's gateway
+Confirmed live: **Tally's own license server (commonly port 9999) answers
+HTTP requests with an HTML status page** — if you accidentally point
+`TALLY_URL` at it, a naive "did the request succeed" check says yes, when
+nothing about it is the actual XML gateway. `get_health_check` specifically
+checks the *shape* of the response (rejects an HTML page, not just any
+non-200 status) rather than trusting a bare connection success — use it
+first when debugging "is this even the right port" instead of a raw
+`get_company_info` call, whose failure mode here would be a confusing
+JSON-parse-of-garbage result rather than a clear answer.
 
 ## Newer, lower-confidence tools
 

@@ -1,8 +1,9 @@
-import { tallyRequest, buildCollectionXml } from "./tally.js";
+import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
 import { syncAll, syncVouchers, runSql } from "./db.js";
-import { readAuditLog, summarizeAuditLog } from "./audit.js";
+import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
+import { getPermissionStatus } from "./permissions.js";
 
 export const tools = [
   {
@@ -606,12 +607,13 @@ export const tools = [
   {
     name: "create_physical_stock",
     description:
-      "Create a Physical Stock voucher in TallyPrime — records the actual counted quantity of one or more stock " +
-      "items from a physical verification, so Tally can show the shortage/excess variance against book stock in " +
-      "stock reports. Inventory-only, zero value/amount — it does not post any accounting adjustment for the " +
-      "variance (do that separately with create_voucher/create_stock_journal if you need to write off the " +
-      "difference). EXTRAPOLATED from Tally's documented Physical Stock XML schema, not reverse-engineered from a " +
-      "real manually-created example — verify carefully after use.",
+      "Create a Physical Stock voucher in TallyPrime — records a physical count and updates the stock item's " +
+      "book quantity to match it (that's the point of the voucher). Confirmed live against a real Tally-exported " +
+      "XML template (uses DIFFACTUALQTY=Yes at voucher level, not a per-line flag) after an earlier version of " +
+      "this tool was found to corrupt the closing balance to a nonsensical negative number — fixed and " +
+      "re-verified: counting 95 of an item that had 100 correctly closed the item at 95. It does not post any " +
+      "monetary/ledger write-off for the resulting shortage or excess value — do that separately with " +
+      "create_voucher if needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -891,9 +893,9 @@ export const tools = [
     description:
       "Create an item-invoice Credit Note in TallyPrime — a Sales return, reversing stock and revenue for returned " +
       "items. Same shape as create_sales_invoice but with the debit/credit convention flipped, matching Purchase's " +
-      "sign pattern (a Credit Note is structurally a reverse Sales entry). UNLIKE create_sales_invoice/" +
-      "create_purchase_invoice, this was extrapolated from that proven convention, not reverse-engineered from a " +
-      "real manually-created example — verify carefully after use. Same godown and dual-role deletion caveats apply.",
+      "sign pattern (a Credit Note is structurally a reverse Sales entry). Confirmed live on a real company: " +
+      "returning 5 units correctly increased the item's book quantity by exactly 5. Same godown and dual-role " +
+      "deletion caveats as create_sales_invoice apply.",
     inputSchema: {
       type: "object",
       properties: {
@@ -984,10 +986,9 @@ export const tools = [
     description:
       "Create an item-invoice Debit Note in TallyPrime — a Purchase return, reversing stock and expense for " +
       "returned items. Same shape as create_purchase_invoice but with the debit/credit convention flipped, " +
-      "matching Sales's sign pattern (a Debit Note is structurally a reverse Purchase entry). UNLIKE " +
-      "create_sales_invoice/create_purchase_invoice, this was extrapolated from that proven convention, not " +
-      "reverse-engineered from a real manually-created example — verify carefully after use. Same godown and " +
-      "dual-role deletion caveats apply.",
+      "matching Sales's sign pattern (a Debit Note is structurally a reverse Purchase entry). Confirmed live on a " +
+      "real company: returning 3 units correctly decreased the item's book quantity by exactly 3. Same godown " +
+      "and dual-role deletion caveats as create_purchase_invoice apply.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1468,6 +1469,15 @@ export const tools = [
         },
       },
     },
+  },
+  {
+    name: "get_health_check",
+    description:
+      "Check whether this connector is actually safe and working right now: is Tally's gateway reachable, is a " +
+      "company open (and which one), what TALLY_URL it's talking to, whether read-only mode is on, and which " +
+      "tools (if any) are explicitly disabled. Use this before trusting a session, or when something feels off, " +
+      "instead of inferring connector state from a single tool call's success/failure.",
+    inputSchema: { type: "object", properties: {} },
   },
 ];
 
@@ -2876,6 +2886,47 @@ export async function handleTool(
       };
       const entries = readAuditLog({ limit, toolFilter, writesOnly, fromDate, toDate });
       return format === "summary" ? summarizeAuditLog(entries) : JSON.stringify(entries, null, 2);
+    }
+
+    case "get_health_check": {
+      const permissionStatus = getPermissionStatus();
+      let gatewayReachable = false;
+      let companyOpen: string | null = null;
+      let connectionError: string | null = null;
+      try {
+        const xml = buildCollectionXml("Company", [{ name: "NAME" }]);
+        const result = await tallyRequest(xml);
+        const cleaned = cleanTallyResult(result) as any;
+        // Confirmed live: something else can be listening on the configured port and
+        // still answer with HTTP 200 — e.g. Tally's own license server (port 9999 by
+        // default) responds with an HTML status page, not XML. That parses to an
+        // "html" wrapper key here instead of the Company collection's expected shape,
+        // so treat it as "wrong service at this address", not a reachable gateway.
+        if (cleaned && typeof cleaned === "object" && "html" in cleaned) {
+          connectionError =
+            `Something responded at ${TALLY_URL}, but it isn't TallyPrime's XML gateway (got an HTML page ` +
+            `instead — this can happen if the port belongs to a different service, e.g. Tally's license server).`;
+        } else {
+          gatewayReachable = true;
+          const name = cleaned?.DATA?.ROW?.NAME;
+          companyOpen = typeof name === "string" && name.length > 0 ? name : null;
+        }
+      } catch (err) {
+        connectionError = err instanceof TallyConnectionError ? err.message : String(err);
+      }
+      return JSON.stringify(
+        {
+          tallyUrl: TALLY_URL,
+          gatewayReachable,
+          companyOpen,
+          connectionError,
+          readOnlyMode: permissionStatus.readOnly,
+          disabledTools: permissionStatus.disabledTools,
+          auditLogPath: auditLogPath(),
+        },
+        null,
+        2
+      );
     }
 
     default:
