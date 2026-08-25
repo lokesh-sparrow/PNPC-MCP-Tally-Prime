@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -6,6 +9,14 @@ import {
 import { tools, handleTool } from "./tools.js";
 import { appendAuditEntry } from "./audit.js";
 import { checkPermission } from "./permissions.js";
+
+// Read the real version from package.json instead of hardcoding one here —
+// confirmed live that a hardcoded string silently drifted from the actual
+// shipped version across several releases (frozen at "0.2.0" while
+// package.json/manifest.json moved on to 1.4.0+) with nothing to catch it.
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const packageJson = JSON.parse(readFileSync(join(moduleDir, "..", "package.json"), "utf8"));
+const SERVER_VERSION: string = packageJson.version;
 
 // Tools that only read from Tally or change session context (not data) — everything
 // else creates/updates/deletes masters or vouchers. Claude Desktop's Extensions page
@@ -19,9 +30,26 @@ const READ_ONLY_TOOLS = new Set([
 ]);
 
 function annotationsFor(toolName: string) {
-  return READ_ONLY_TOOLS.has(toolName)
-    ? { readOnlyHint: true, openWorldHint: false }
-    : { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false };
+  if (READ_ONLY_TOOLS.has(toolName)) {
+    return { readOnlyHint: true, openWorldHint: false };
+  }
+  if (toolName.startsWith("delete_")) {
+    // Deleting an already-gone target converges to the same end state either way.
+    return { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false };
+  }
+  if (toolName.startsWith("create_")) {
+    // Confirmed live throughout this project: calling a create_* tool twice with
+    // the same args creates a second record, or Tally rejects it as a duplicate
+    // name — never a safe no-op repeat. idempotentHint: true here would be wrong
+    // and could encourage a caller to safely "just retry" a create, risking
+    // duplicate masters/vouchers in a real client's books. Also not destructive —
+    // it adds a new record rather than overwriting existing data.
+    return { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+  }
+  // update_* tools (and set_bill_of_materials, which overwrites a stock item's
+  // recipe) replace existing state with a fixed target — repeating with the same
+  // args converges to the same end state, and they do overwrite prior data.
+  return { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false };
 }
 
 // Builds a fresh MCP Server instance. Shared by both the stdio entry point
@@ -29,7 +57,7 @@ function annotationsFor(toolName: string) {
 // (http-server.ts, for remote/cloud use).
 export function createServer(): Server {
   const server = new Server(
-    { name: "pnpc-mcp-tally-prime", version: "0.2.0" },
+    { name: "pnpc-mcp-tally-prime", version: SERVER_VERSION },
     { capabilities: { tools: {} } }
   );
 
