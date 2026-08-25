@@ -2,7 +2,7 @@ import { tallyRequest, buildCollectionXml } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
 import { syncAll, syncVouchers, runSql } from "./db.js";
-import { readAuditLog } from "./audit.js";
+import { readAuditLog, summarizeAuditLog } from "./audit.js";
 
 export const tools = [
   {
@@ -1263,12 +1263,23 @@ export const tools = [
       "timestamp, arguments, and outcome (success/error/denied). The log file itself is never rewritten or " +
       "truncated by this tool, only appended to as calls happen, so this always reflects the true history. Use " +
       "this to review what an agent actually did against this Tally company, e.g. before trusting a session's " +
-      "claimed results, or to audit write operations after the fact.",
+      "claimed results, or to hand a reviewer a plain record of every write made in a given period.",
     inputSchema: {
       type: "object",
       properties: {
-        limit: { type: "number", description: "Max number of most-recent entries to return. Defaults to 50." },
+        limit: { type: "number", description: "Max number of most-recent matching entries to return. Defaults to 50." },
         toolFilter: { type: "string", description: "Only return entries for this exact tool name." },
+        writesOnly: { type: "boolean", description: "Only return write calls (skip reads) — for reviewing what actually changed." },
+        fromDate: { type: "string", description: "Inclusive start date, DD-MM-YYYY. Filters by when the call happened." },
+        toDate: { type: "string", description: "Inclusive end date, DD-MM-YYYY." },
+        format: {
+          type: "string",
+          enum: ["json", "summary"],
+          description:
+            "'json' (default) returns the raw matching entries. 'summary' returns a compact table with " +
+            "counts by outcome — meant to be handed to someone reviewing what changed, without them needing " +
+            "to parse JSON themselves.",
+        },
       },
     },
   },
@@ -2512,9 +2523,16 @@ export async function handleTool(
     }
 
     case "get_audit_log": {
-      const { limit, toolFilter } = args as { limit?: number; toolFilter?: string };
-      const entries = readAuditLog(limit ?? 50, toolFilter);
-      return JSON.stringify(entries, null, 2);
+      const { limit, toolFilter, writesOnly, fromDate, toDate, format } = args as {
+        limit?: number;
+        toolFilter?: string;
+        writesOnly?: boolean;
+        fromDate?: string;
+        toDate?: string;
+        format?: "json" | "summary";
+      };
+      const entries = readAuditLog({ limit, toolFilter, writesOnly, fromDate, toDate });
+      return format === "summary" ? summarizeAuditLog(entries) : JSON.stringify(entries, null, 2);
     }
 
     default:

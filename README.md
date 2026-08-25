@@ -215,7 +215,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `get_audit_log` | `limit?` (default 50), `toolFilter?` | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, and outcome (`success`/`error`/`denied`) |
+| `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`, `toDate?`, `format?` (`'json'` default or `'summary'`) | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, and outcome (`success`/`error`/`denied`). `writesOnly` + a date range + `format: 'summary'` gives a compact reviewer-facing table instead of raw JSON — "what changed between these two dates" |
 
 Every tool call — read or write — is appended to a local JSONL log file
 (never rewritten or truncated, only appended to), so there's always a
@@ -313,7 +313,7 @@ manifest.json     Claude Desktop Extension manifest (manifest_version 0.3)
 ## Roadmap / not yet supported
 
 - GST/VAT-specific statutory reports (e.g. GSTR-1, GSTR-3B, VAT return format)
-- Tested/packaged integration with other MCP-capable AI clients (e.g. OpenAI Codex) — the server itself is a standard MCP server (stdio/HTTP) so it's not inherently Claude-only, but the `.mcpb` packaging and install steps above are Claude Desktop-specific and this hasn't been verified against other clients yet
+- Ready-made packaging for AI clients other than Claude Desktop — the server itself runs on the standard MCP protocol (stdio and HTTP), so it isn't tied to Claude; the `.mcpb`/install steps above are just this repo's Claude Desktop packaging
 
 ## License
 

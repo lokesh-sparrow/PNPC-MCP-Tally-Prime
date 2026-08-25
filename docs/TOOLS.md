@@ -20,7 +20,7 @@ All dates are `DD-MM-YYYY` unless stated otherwise.
 | `get_stock_summary` | `asOf` | Stock Summary as of a date |
 | `get_bills_receivable` | `asOf` | Outstanding receivables as of a date |
 | `get_bills_payable` | `asOf` | Outstanding payables as of a date |
-| `get_audit_log` | `limit?` (default 50), `toolFilter?` | Reads entries from the local append-only audit log (`audit.ts`) — every tool call through this server, read or write, with timestamp/args/outcome. See "Audit trail & permission scoping" below. |
+| `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`/`toDate?` (DD-MM-YYYY), `format?` (`'json'`/`'summary'`) | Reads entries from the local append-only audit log (`audit.ts`) — every tool call through this server, read or write, with timestamp/args/outcome. `format: 'summary'` returns a compact table + outcome counts instead of raw JSON, for handing to a reviewer. See "Audit trail & permission scoping" below. |
 
 ## Write tools
 
