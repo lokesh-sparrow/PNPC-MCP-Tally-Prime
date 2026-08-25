@@ -1447,10 +1447,11 @@ export const tools = [
     name: "get_audit_log",
     description:
       "Read this connector's append-only audit log — every tool call made through it (read or write), with " +
-      "timestamp, arguments, and outcome (success/error/denied). The log file itself is never rewritten or " +
-      "truncated by this tool, only appended to as calls happen, so this always reflects the true history. Use " +
-      "this to review what an agent actually did against this Tally company, e.g. before trusting a session's " +
-      "claimed results, or to hand a reviewer a plain record of every write made in a given period.",
+      "timestamp, arguments, outcome (success/error/denied), and a best-effort Tally company tag. Entries older " +
+      "than 90 days are permanently deleted (checked once per server startup, not kept indefinitely) — this is " +
+      "not a full historical record beyond that window. Use this to review what an agent actually did against " +
+      "this Tally company, e.g. before trusting a session's claimed results, or to hand a reviewer a plain " +
+      "record of every write made in a given period.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1459,6 +1460,13 @@ export const tools = [
         writesOnly: { type: "boolean", description: "Only return write calls (skip reads) — for reviewing what actually changed." },
         fromDate: { type: "string", description: "Inclusive start date, DD-MM-YYYY. Filters by when the call happened." },
         toDate: { type: "string", description: "Inclusive end date, DD-MM-YYYY." },
+        company: {
+          type: "string",
+          description:
+            "Only return entries tagged with this exact Tally company name. Tagging is best-effort — a call " +
+            "made before this connector learned which company was open (via get_company_info, get_health_check, " +
+            "or set_company) is stored with no company and won't match any value here.",
+        },
         format: {
           type: "string",
           enum: ["json", "summary"],
@@ -2557,6 +2565,24 @@ export async function handleTool(
       const { companyName } = args as { companyName: string };
       const xml = invokeActionXml("ChangeCurrentCompany", [{ name: "SVCurrentCompany", value: companyName }]);
       await tallyRequest(xml);
+
+      // ChangeCurrentCompany silently no-ops if companyName isn't already open in
+      // Tally — it does not throw or return any error shape, it just leaves the
+      // previous company active. Confirmed live: without this check, this tool
+      // would report "OK" while Tally stayed on the old company, and every
+      // subsequent read/write in the session would silently target the wrong
+      // company's books with nothing to catch it.
+      const checkXml = buildCollectionXml("Company", [{ name: "NAME" }]);
+      const checkResult = await tallyRequest(checkXml);
+      const cleaned = cleanTallyResult(checkResult) as any;
+      const activeCompany = cleaned?.DATA?.ROW?.NAME;
+      if (activeCompany !== companyName) {
+        throw new Error(
+          `Tally did not switch to "${companyName}" — it's still on ` +
+            `"${activeCompany ?? "(unknown)"}". This usually means "${companyName}" isn't ` +
+            `currently open in Tally (only companies already loaded in Tally can be switched to).`
+        );
+      }
       return JSON.stringify("OK");
     }
 
@@ -2876,15 +2902,16 @@ export async function handleTool(
     }
 
     case "get_audit_log": {
-      const { limit, toolFilter, writesOnly, fromDate, toDate, format } = args as {
+      const { limit, toolFilter, writesOnly, fromDate, toDate, company, format } = args as {
         limit?: number;
         toolFilter?: string;
         writesOnly?: boolean;
         fromDate?: string;
         toDate?: string;
+        company?: string;
         format?: "json" | "summary";
       };
-      const entries = readAuditLog({ limit, toolFilter, writesOnly, fromDate, toDate });
+      const entries = readAuditLog({ limit, toolFilter, writesOnly, fromDate, toDate, company });
       return format === "summary" ? summarizeAuditLog(entries) : JSON.stringify(entries, null, 2);
     }
 

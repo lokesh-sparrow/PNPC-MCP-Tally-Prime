@@ -145,21 +145,18 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `update_credit_note` | Same fields as `create_credit_note`, plus required `voucherNumber` | Replaces an existing Credit Note's item lines in place |
 | `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. **Confirmed live** on a real company: returning 3 units correctly decreased book quantity by 3 |
 | `update_debit_note` | Same fields as `create_debit_note`, plus required `voucherNumber` | Replaces an existing Debit Note's item lines in place |
-| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). **Confirmed live** after a real bug was found and fixed: an earlier version corrupted the closing balance to a nonsensical negative number; now verified correct (counting 95 of an item with 100 in stock correctly closes it at 95). Doesn't post any monetary write-off for the shortage/excess value itself |
+| `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). Confirmed live: counting 95 of an item with 100 in stock correctly closes it at 95. Doesn't post any monetary write-off for the shortage/excess value itself — see [Troubleshooting](docs/TROUBLESHOOTING.md) if you're on an older build than this |
 | `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
 
 > ℹ️ **`additionalCosts` on `create_stock_journal`/`update_stock_journal`, confirmed live** (both via direct API testing and by cross-checking a manually-created voucher's exported data): this does **not** post a real transaction against the named ledger — its balance stays unchanged. It's a costing/valuation instruction only, telling Tally's stock valuation reports to fold that amount into the produced item's effective cost. The actual expense (e.g. paying labour) still needs recording separately, e.g. via `create_voucher`.
 
-> ⚠️ **Voucher type collision, confirmed live:** Tally's Alter/Delete lookup
-> (`update_voucher`, `update_sales_invoice`, `update_purchase_invoice`,
-> `update_credit_note`, `update_debit_note`, `update_stock_journal`,
-> `update_physical_stock`, `delete_voucher`) matches by **date + voucher
-> number only** — it does not scope by voucher type, even though you pass
-> one. If two different voucher types share the same number on the same
-> date (common, since each type numbers independently), it can silently
-> alter/delete the wrong one. Every one of these tools now checks for that
-> ambiguity first and **refuses** rather than risk it — resolve the
-> collision in Tally (renumber one of them) if you hit this error.
+> ℹ️ **Voucher type collision:** `update_voucher`, `update_sales_invoice`,
+> `update_purchase_invoice`, `update_credit_note`, `update_debit_note`,
+> `update_stock_journal`, `update_physical_stock`, and `delete_voucher` all
+> check for date+number ambiguity across voucher types before touching
+> anything, and refuse rather than risk altering/deleting the wrong one.
+> If you hit that refusal, see [Troubleshooting](docs/TROUBLESHOOTING.md)
+> for why it happens and how to resolve it in Tally.
 
 ### Write — masters
 
@@ -198,9 +195,9 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 > other caller sees next.
 >
 > `set_company` can only switch to a company that is **already open** in
-> Tally (multiple companies can be open at once) — it returns success but
-> has no effect if you name a company that isn't loaded. Open it in Tally
-> first (File → Select Company), then switch to it via this tool.
+> Tally (multiple companies can be open at once) — naming one that isn't
+> loaded returns an error rather than silently doing nothing. Open it in
+> Tally first (File → Select Company), then switch to it via this tool.
 
 ### SQL cache
 
@@ -222,12 +219,18 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`, `toDate?`, `format?` (`'json'` default or `'summary'`) | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, and outcome (`success`/`error`/`denied`). `writesOnly` + a date range + `format: 'summary'` gives a compact reviewer-facing table instead of raw JSON — "what changed between these two dates" |
+| `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`, `toDate?`, `company?`, `format?` (`'json'` default or `'summary'`) | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, outcome (`success`/`error`/`denied`), and a best-effort company tag. `company` filters to one Tally company; `writesOnly` + a date range + `format: 'summary'` gives a compact reviewer-facing table instead of raw JSON — "what changed between these two dates" |
 | `get_health_check` | — | Reports whether Tally's gateway is actually reachable (not just "something answered" — confirmed live that Tally's own license server can respond on a misconfigured port with an HTML page that looks like success unless checked), which company is open, the active `TALLY_URL`, current read-only/disabled-tools state, and the audit log's file path. Always allowed, even in read-only mode |
 
-Every tool call — read or write — is appended to a local JSONL log file
-(never rewritten or truncated, only appended to), so there's always a
-plain-text record of exactly what an agent did against this Tally company.
+Every tool call — read or write — is appended to a local JSONL log file, so
+there's always a plain-text record of exactly what an agent did. All
+companies share this one log file; each entry carries a best-effort
+`company` tag (updated whenever `get_company_info`, `get_health_check`, or
+`set_company` succeeds — not a live lookup on every call). Once per server
+start, entries older than 90 days are permanently deleted by rewriting the
+file — this is a hard delete, not an archive. A cheap size check on every
+write also triggers the same deletion if the file grows past 50MB, so a
+long-lived process doesn't have to wait for a restart for this to kick in.
 
 **Safe by default:** a fresh `.mcpb` install starts in **read-only mode** —
 this connector can look at your books but cannot change anything until you

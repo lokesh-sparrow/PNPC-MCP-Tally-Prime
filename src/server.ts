@@ -7,8 +7,27 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { tools, handleTool } from "./tools.js";
-import { appendAuditEntry } from "./audit.js";
+import { appendAuditEntry, pruneAuditLog, setActiveCompany } from "./audit.js";
 import { checkPermission } from "./permissions.js";
+
+// Tools whose successful result tells us which Tally company is active —
+// used to keep the audit log's best-effort company tag up to date. See
+// setActiveCompany in audit.ts for why this is cache-on-success rather than
+// a live lookup before every call.
+function updateActiveCompanyFrom(name: string, args: Record<string, unknown>, text: string): void {
+  try {
+    if (name === "set_company") {
+      const companyName = args.companyName;
+      if (typeof companyName === "string" && companyName.length > 0) setActiveCompany(companyName);
+    } else if (name === "get_company_info" || name === "get_health_check") {
+      const parsed = JSON.parse(text);
+      const companyName = name === "get_health_check" ? parsed?.companyOpen : parsed?.DATA?.ROW?.NAME;
+      if (typeof companyName === "string" && companyName.length > 0) setActiveCompany(companyName);
+    }
+  } catch {
+    // Best-effort — a parse failure here just means the cache doesn't update this call.
+  }
+}
 
 // Read the real version from package.json instead of hardcoding one here —
 // confirmed live that a hardcoded string silently drifted from the actual
@@ -56,6 +75,8 @@ function annotationsFor(toolName: string) {
 // (index.ts, for local Claude Desktop use) and the HTTP entry point
 // (http-server.ts, for remote/cloud use).
 export function createServer(): Server {
+  pruneAuditLog();
+
   const server = new Server(
     { name: "pnpc-mcp-tally-prime", version: SERVER_VERSION },
     { capabilities: { tools: {} } }
@@ -91,6 +112,7 @@ export function createServer(): Server {
 
     try {
       const text = await handleTool(name, (args ?? {}) as Record<string, unknown>);
+      updateActiveCompanyFrom(name, (args ?? {}) as Record<string, unknown>, text);
       appendAuditEntry({
         ts: new Date().toISOString(),
         tool: name,

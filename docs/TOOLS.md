@@ -20,7 +20,7 @@ All dates are `DD-MM-YYYY` unless stated otherwise.
 | `get_stock_summary` | `asOf` | Stock Summary as of a date |
 | `get_bills_receivable` | `asOf` | Outstanding receivables as of a date |
 | `get_bills_payable` | `asOf` | Outstanding payables as of a date |
-| `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`/`toDate?` (DD-MM-YYYY), `format?` (`'json'`/`'summary'`) | Reads entries from the local append-only audit log (`audit.ts`) — every tool call through this server, read or write, with timestamp/args/outcome. `format: 'summary'` returns a compact table + outcome counts instead of raw JSON, for handing to a reviewer. See "Audit trail & permission scoping" below. |
+| `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`/`toDate?` (DD-MM-YYYY), `company?`, `format?` (`'json'`/`'summary'`) | Reads entries from the local append-only audit log (`audit.ts`) — every tool call through this server, read or write, with timestamp/args/outcome/company tag. `company` filters to entries tagged with that exact Tally company name. `format: 'summary'` returns a compact table + outcome counts instead of raw JSON, for handing to a reviewer. Entries older than 90 days are hard-deleted — see "Audit trail & permission scoping" below. |
 | `get_health_check` | — | Attempts a real Company collection query and inspects the *shape* of the response, not just whether the HTTP call succeeded — confirmed live that a wrong port can still return `200 OK` from an entirely different service (Tally's own license server on port 9999 answers with an HTML status page) which would otherwise look like a working gateway. Reports `tallyUrl`, `gatewayReachable`, `companyOpen`, `connectionError`, `readOnlyMode`, `disabledTools`, `auditLogPath`. Always allowed regardless of read-only mode (it's in `READ_ONLY_TOOLS`). |
 
 ## Write tools
@@ -97,11 +97,26 @@ Every tool call — read or write — passes through `server.ts`'s
 2. **Audit logging** (`audit.ts`, after `handleTool` resolves or throws):
    appends one JSON line — `ts`, `tool`, `readOnly`, `outcome`
    (`success`/`error`/`denied`), `detail` (result text or error message,
-   truncated to 500 chars), `durationMs`, `args` — to a local file, opened in
-   append mode every time (`appendFileSync`), never rewritten or truncated.
-   A logging failure is swallowed, not surfaced, so it can never block the
-   underlying Tally operation. `get_audit_log` reads this file back for
-   review from within the assistant itself.
+   truncated to 500 chars), `durationMs`, `args`, `company` — to a local
+   file, opened in append mode every time (`appendFileSync`). A logging
+   failure is swallowed, not surfaced, so it can never block the underlying
+   Tally operation. `get_audit_log` reads this file back for review from
+   within the assistant itself.
+
+   `company` is a best-effort tag: an in-memory cache updated whenever
+   `get_company_info`, `get_health_check`, or `set_company` succeeds, not a
+   live lookup before every call. Entries logged before the cache first
+   learns a company name have `company: null`. All companies share one
+   audit log file rather than one file per company.
+
+   Once per server process start (`pruneAuditLog`, called from
+   `createServer`), entries older than 90 days are permanently deleted by
+   rewriting the file — this is a hard delete, not an archive, and it's the
+   one case where the file is rewritten rather than only appended to. A
+   long-lived process doesn't have to wait for a restart to benefit from
+   this: after every write, a cheap file-size check (metadata only, no
+   content read) also triggers the same 90-day prune if the file has grown
+   past 50MB, so growth is bounded even between restarts.
 
 This directly addresses the two original gaps (tight permission scopes,
 append-only audit trail) an external reviewer flagged for write-back
@@ -111,7 +126,7 @@ operations against vouchers/ledgers.
 
 | Tool | Args | Effect |
 |---|---|---|
-| `set_company` | `companyName` | Switches Tally's active company — persistent, global state, affects every subsequent call. Only works if that company is already open in Tally; silently no-ops otherwise. |
+| `set_company` | `companyName` | Switches Tally's active company — persistent, global state, affects every subsequent call. Only works if that company is already open in Tally; verifies the switch actually happened and throws an error otherwise (Tally's own `ChangeCurrentCompany` action silently no-ops on a company that isn't open — this tool does not). |
 | `set_period` | `from`, `to` | Switches Tally's active reporting period — same persistent-state caveat as `set_company`. |
 
 ## SQL cache tools

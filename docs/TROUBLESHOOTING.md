@@ -208,9 +208,12 @@ around the refusal.
 
 - Every tool call — read or write — is appended to a local JSONL file
   (`TALLY_AUDIT_LOG_PATH`, default `audit.log.jsonl` next to the installed
-  package). It's opened in append mode on every write and never rewritten or
-  truncated, so it's always a true record. Read it back with `get_audit_log`
-  (`limit?`, `toolFilter?`).
+  package), tagged with a best-effort Tally company name. Read it back with
+  `get_audit_log` (`limit?`, `toolFilter?`, `company?`, `format?`).
+- Entries older than 90 days are permanently deleted — checked once when
+  the server process starts, and again on any write once the file passes
+  50MB. If you need history beyond 90 days, copy the file elsewhere before
+  that point; there's no built-in archive.
 - Set `TALLY_PERMISSION_MODE=read_only` (or, via Claude Desktop's Extensions
   settings screen, turn on "Read-only mode") to block every write tool
   before it reaches Tally — the denial itself is also logged
