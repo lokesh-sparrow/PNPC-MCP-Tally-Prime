@@ -1,8 +1,19 @@
 # Installing PNPC-MCP-Tally-Prime in Claude Desktop
 
-## 1. Build the `.mcpb` package
+**Before you start:** if you're installing this on a company you actively
+use, take a Tally backup first (Gateway of Tally → Alt+F3 → Backup) — this
+connector can write to Tally once you turn write access on, and a backup
+costs a minute.
 
-From the repo root, using a working Node 18+ install (see
+## 1. Get the `.mcpb` package
+
+Most people should just download it — no build tools needed:
+
+- Go to the [latest release](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest)
+  and download `PNPC-MCP-Tally-Prime.mcpb` from **Assets**.
+
+Only build it yourself if you're modifying the source. From the repo root,
+using a working Node 18+ install (see
 [Node version note](#node-version-note) below if `node` on your machine
 resolves to something ancient):
 
@@ -27,10 +38,12 @@ package — they're only needed to compile `dist/`, not to run it.
    Extensions page, separate from any "browse extensions" button that
    just links out to a directory or GitHub.
 4. Select `PNPC-MCP-Tally-Prime.mcpb`.
-5. You should see an install/confirmation screen listing the 30 tools
-   and a **TallyPrime Gateway URL** field — leave it as
-   `http://localhost:9000` unless Tally's XML gateway runs on a
-   different port on your machine.
+5. You should see an install/confirmation screen listing the tools
+   (52 as of the current release), a **Tally Gateway URL** field (leave it
+   as `http://localhost:9000` unless Tally's XML gateway runs on a
+   different port on your machine), a **Read-only mode** toggle (on by
+   default — this connector can only look until you deliberately turn it
+   off), and an optional **Disabled tools** field.
 6. Confirm/click through the install prompt, then make sure the
    extension shows as **enabled**.
 7. Restart Claude Desktop if the tools don't appear immediately.
@@ -58,9 +71,12 @@ failed:
 
 ## 3. Verify it's connected
 
-Once enabled, ask Claude something that needs a Tally read tool (e.g.
-"list my Tally ledgers") — if it responds using this extension's tools
-rather than erroring, it's wired up correctly.
+Once enabled, ask Claude to **run a health check** — this uses the
+`get_health_check` tool and reports whether Tally's gateway is reachable,
+which company is open, and your current read-only/disabled-tools settings
+in one shot, instead of guessing from a single tool call's success or
+failure. You can also just ask something that needs a Tally read tool (e.g.
+"list my Tally ledgers") to confirm it's wired up.
 
 ## Node version note
 
