@@ -20,17 +20,29 @@ it for a range you already synced just refreshes that range.
 
 `query_sql` then runs an arbitrary read-only `SELECT` against that cache.
 
+`get_profit_and_loss` and `get_stock_summary` cache themselves
+automatically, with no sync step at all — calling either one refreshes its
+table with that call's result, so a follow-up question about the same
+report can query it via SQL instead of re-fetching from Tally and re-dumping
+the full report into context a second time.
+
 ## Tables
 
-| Table | Columns |
-|---|---|
-| `ledgers` | `name`, `parent`, `closing_balance` |
-| `groups` | `name`, `parent` |
-| `stock_items` | `name`, `parent`, `closing_balance` |
-| `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` |
+| Table | Columns | Populated by |
+|---|---|---|
+| `ledgers` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
+| `groups` | `name`, `parent` | `sync_to_sql` (explicit) |
+| `stock_items` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
+| `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` | `sync_vouchers_to_sql` (explicit) |
+| `profit_and_loss` | `ledger_name`, `group_name`, `closing_balance`, `period_from`, `period_to` | `get_profit_and_loss` (automatic) |
+| `stock_summary` | `name`, `parent`, `opening_qty`, `closing_qty`, `opening_value`, `closing_value`, `as_of_date` | `get_stock_summary` (automatic) |
 
 `vouchers` is only populated for date ranges you've explicitly pulled via
-`sync_vouchers_to_sql` — it starts empty every session.
+`sync_vouchers_to_sql` — it starts empty every session. `profit_and_loss`
+and `stock_summary` are whole-table replaced on every call to their
+respective report tool — each holds only the **most recent** call's result,
+not an accumulating history. Calling `get_profit_and_loss` for a different
+period wipes and replaces the table, it doesn't add to it.
 
 ## Example
 
@@ -40,6 +52,15 @@ sync_vouchers_to_sql: from=01-01-2024 to=31-03-2024
 sync_vouchers_to_sql: from=01-04-2024 to=30-06-2024
 query_sql: SELECT voucher_type, COUNT(*), SUM(amount) FROM vouchers
            GROUP BY voucher_type ORDER BY 2 DESC
+```
+
+For `profit_and_loss`/`stock_summary`, no sync call is needed — just call
+the report tool once, then query it:
+
+```
+get_profit_and_loss: from=01-01-2024 to=31-12-2024
+query_sql: SELECT group_name, SUM(closing_balance) FROM profit_and_loss
+           GROUP BY group_name ORDER BY 2 DESC
 ```
 
 ## Limitations
@@ -52,7 +73,9 @@ query_sql: SELECT voucher_type, COUNT(*), SUM(amount) FROM vouchers
   cache across restarts (or across a company switch within one session)
   would risk silently mixing one client's numbers with another's. Re-sync
   after switching companies, and before answering any report that needs
-  up-to-the-minute figures.
+  up-to-the-minute figures. `profit_and_loss`/`stock_summary` carry the same
+  caveat — re-call the report tool after switching companies before
+  querying either one.
 - **Vouchers only carry header-level detail.** No stock item or ledger line
   breakdown is cached — use `get_vouchers` / `get_ledger_vouchers` for that.
 - **Read-only.** `query_sql` rejects anything that isn't a single `SELECT`

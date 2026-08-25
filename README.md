@@ -207,11 +207,19 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `sync_vouchers_to_sql` | `from`, `to` | Pulls voucher headers (date, type, number, party, amount, narration — not line items) for one date range into the same cache. Call it once per chunk (e.g. per quarter) to build up full multi-year history within a session — each call only replaces vouchers in its own date range, so calling it for 2024 then 2025 gives you both |
 | `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)` |
 
+`get_profit_and_loss` and `get_stock_summary` also cache themselves into
+this same store automatically — `profit_and_loss(ledger_name, group_name,
+closing_balance, period_from, period_to)` and `stock_summary(name, parent,
+opening_qty, closing_qty, opening_value, closing_value, as_of_date)` — no
+separate sync call needed. Each holds only the most recent call's result,
+replaced whenever you call that report tool again.
+
 > The cache is **in-memory and session-scoped only** — it's gone as soon as
 > the server process exits, and there's no persistence to disk. This is
 > deliberate: since one Tally connection can be pointed at many different
 > client companies over time (`set_company`), nothing here tracks *which*
-> company a cached row came from. If you switch companies, re-sync before
+> company a cached row came from. If you switch companies, re-sync (or, for
+> `profit_and_loss`/`stock_summary`, re-call the report tool) before
 > querying — don't run `query_sql` against a cache that spans a company
 > switch, since the rows won't be distinguishable by company.
 

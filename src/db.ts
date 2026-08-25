@@ -63,6 +63,22 @@ async function ensureSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_vouchers_date ON vouchers(date);
       CREATE INDEX IF NOT EXISTS idx_vouchers_type ON vouchers(voucher_type);
       CREATE INDEX IF NOT EXISTS idx_vouchers_party ON vouchers(party_ledger);
+      CREATE TABLE IF NOT EXISTS profit_and_loss (
+        ledger_name TEXT,
+        group_name TEXT,
+        closing_balance NUMERIC,
+        period_from DATE,
+        period_to DATE
+      );
+      CREATE TABLE IF NOT EXISTS stock_summary (
+        name TEXT,
+        parent TEXT,
+        opening_qty NUMERIC,
+        closing_qty NUMERIC,
+        opening_value NUMERIC,
+        closing_value NUMERIC,
+        as_of_date DATE
+      );
     `).then(() => undefined);
   }
   await schemaReady;
@@ -188,6 +204,61 @@ export async function syncVouchers(from: string, to: string): Promise<string> {
     `Call again with other date ranges to build up full history for this session — ` +
     `each call only replaces vouchers within its own date range.`
   );
+}
+
+// Auto-caches the last get_profit_and_loss call's rows — whole-table replace,
+// same "cache reflects the most recent call" model as syncAll's ledgers/
+// groups/stock_items, not an accumulating history. Called automatically by
+// the tool handler itself (no separate sync step), so a follow-up question
+// about the same P&L result can query it via SQL instead of re-fetching and
+// re-dumping the full report into context again. Failures here must never
+// break the read tool that triggered them — caller wraps this in try/catch.
+export async function cacheProfitAndLoss(
+  rows: { ledgerName: string; groupName: string; closingBalance: number }[],
+  from: string,
+  to: string
+): Promise<void> {
+  await ensureSchema();
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+  await db.exec("BEGIN");
+  try {
+    await db.exec("DELETE FROM profit_and_loss");
+    for (const r of rows) {
+      await db.query(
+        "INSERT INTO profit_and_loss (ledger_name, group_name, closing_balance, period_from, period_to) VALUES ($1, $2, $3, $4, $5)",
+        [str(r.ledgerName), str(r.groupName), num(r.closingBalance), fromIso, toIso]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// Same whole-table-replace model as cacheProfitAndLoss, for get_stock_summary.
+export async function cacheStockSummary(
+  rows: Record<string, unknown>[],
+  asOf: string
+): Promise<void> {
+  await ensureSchema();
+  const asOfIso = toIsoDate(asOf);
+  await db.exec("BEGIN");
+  try {
+    await db.exec("DELETE FROM stock_summary");
+    for (const r of rows) {
+      await db.query(
+        `INSERT INTO stock_summary (name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [str(r.NAME), str(r.PARENT), num(r.OPENINGBALANCE), num(r.CLOSINGBALANCE), num(r.OPENINGVALUE), num(r.CLOSINGVALUE), asOfIso]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 const DDL_KEYWORDS = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;

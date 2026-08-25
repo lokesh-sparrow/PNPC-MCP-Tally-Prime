@@ -1,7 +1,7 @@
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, syncVouchers, runSql } from "./db.js";
+import { syncAll, syncVouchers, runSql, cacheProfitAndLoss, cacheStockSummary } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
 
@@ -1430,11 +1430,17 @@ export const tools = [
   {
     name: "query_sql",
     description:
-      "Run a read-only SQL SELECT query against this session's in-memory cache populated by sync_to_sql/" +
-      "sync_vouchers_to_sql (gone when the session ends). Tables: ledgers(name, parent, closing_balance), " +
-      "groups(name, parent), stock_items(name, parent, closing_balance), vouchers(guid, date, voucher_type, " +
-      "voucher_number, party_ledger, amount, narration) — vouchers is only populated for date ranges you've " +
-      "explicitly synced via sync_vouchers_to_sql, for whichever company was open at sync time.",
+      "Run a read-only SQL SELECT query against this session's in-memory cache (gone when the session ends). " +
+      "Tables: ledgers(name, parent, closing_balance), groups(name, parent), stock_items(name, parent, " +
+      "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration) — " +
+      "all four populated only by explicitly calling sync_to_sql/sync_vouchers_to_sql first. " +
+      "profit_and_loss(ledger_name, group_name, closing_balance, period_from, period_to) and " +
+      "stock_summary(name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date) are " +
+      "populated automatically, no separate sync step — every get_profit_and_loss/get_stock_summary call " +
+      "refreshes them with that call's result, so a follow-up question about the same report can query it here " +
+      "instead of re-fetching from Tally. Each of these two only ever holds the most recent call's data, not a " +
+      "history — re-call the report tool if you need a different period. vouchers/profit_and_loss/stock_summary " +
+      "don't track which company they came from — re-sync/re-fetch after switching companies before querying.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2403,6 +2409,12 @@ export async function handleTool(
           { ledgerName: "Closing Stock", groupName: "Stock-in-Hand", closingBalance: -stockRows[0].CLOSINGBALANCE }
         );
       }
+      try {
+        await cacheProfitAndLoss(rows, from, to);
+      } catch {
+        // Caching is a convenience layer for later SQL queries — never let it
+        // block returning the actual P&L result.
+      }
       return JSON.stringify({ rows }, null, 2);
     }
 
@@ -2462,7 +2474,13 @@ export async function handleTool(
         [],
         dateRange
       );
-      const rows = extractRecords(await tallyRequest(xml));
+      const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+      try {
+        await cacheStockSummary(rows, asOf);
+      } catch {
+        // Caching is a convenience layer for later SQL queries — never let it
+        // block returning the actual Stock Summary result.
+      }
       return JSON.stringify({ rows }, null, 2);
     }
 
