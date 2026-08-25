@@ -130,6 +130,16 @@ that amount into the produced item's effective cost — it is **not** a real
 accounting transaction. If labour/freight was actually paid, record that
 separately with `create_voucher`.
 
+### `create_unit` fails with "Master name contains invalid characters"
+Confirmed live: a simple unit's symbol can't contain whitespace (e.g.
+`"Box Unit"` is rejected, `"Box"` isn't). This tool now checks client-side
+and throws a clear error before the call ever reaches Tally — if you still
+hit Tally's own raw version of this message, it means the name came from
+somewhere else (e.g. `extraFields` on another master). A compound unit's own
+display name (the `symbol` argument when `baseUnit` is set, e.g. `"Box of
+12 Nos"`) is unaffected and can contain spaces — only the simple units it
+*references* (`baseUnit`/`additionalUnit`) need to be space-free.
+
 ## Deleting things
 
 ### `delete_master` returns `LINEERROR: "Cannot be deleted!"` on a stock item/ledger with zero transactions
@@ -203,6 +213,29 @@ around the refusal.
   amount, narration) — no line items. For a busy company, sync in chunks
   (quarterly/monthly) rather than a full year at once, to stay under the
   10s request timeout.
+
+## Newer, lower-confidence tools
+
+`set_bill_of_materials`, `create_material_in`, `create_material_out`,
+`create_rejections_in`, and `create_rejections_out` are all built from real
+Tally-exported XML templates or by direct analogy to other proven-safe
+voucher shapes in this project — but none of them have been verified against
+a real manually-created example the way `create_stock_journal`'s
+multi-source/destination shape and additional-cost allocation have been.
+Treat their output as a strong starting point, not a guarantee — check the
+resulting voucher/master in Tally's own UI after use, especially:
+- `set_bill_of_materials`'s `natureOfItem` accepted values.
+- `create_material_in`/`create_material_out`'s party-ledger amount, which
+  deliberately does **not** balance against the inventory legs (confirmed
+  from the source template — this is job-work memorandum tracking, not a
+  real Dr/Cr pair) — don't mistake this for a bug if the numbers don't net
+  to zero the way a normal voucher would.
+
+**Job Work In/Out Order vouchers were deliberately not built** — no
+confirmed real-world XML example was found, and there's no existing
+"Order"-type voucher tool in this project to model the due-date/lot
+structure from. Guessing that structure blind risked shipping something
+broken rather than just incomplete.
 
 ## Extension install issues
 

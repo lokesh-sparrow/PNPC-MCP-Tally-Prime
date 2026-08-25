@@ -1,0 +1,28 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <STOCKITEM NAME="{{ stockItem }}" ACTION="Alter">
+            <NAME>{{ stockItem }}</NAME>
+            <MULTICOMPONENTLIST.LIST>
+              <COMPONENTLISTNAME>{{ componentListName }}</COMPONENTLISTNAME>
+              <COMPONENTBASICQTY>{{ basicQty }} {{ unit }}</COMPONENTBASICQTY>
+              {% for c in components %}<MULTICOMPONENTITEMLIST.LIST>
+                <STOCKITEMNAME>{{ c.stockItem }}</STOCKITEMNAME>
+                <ACTUALQTY>{{ c.qty }} {{ c.unit }}</ACTUALQTY>
+                <NATUREOFITEM>{{ c.natureOfItem }}</NATUREOFITEM>
+                {% if c.godown %}<GODOWNNAME>{{ c.godown }}</GODOWNNAME>{% endif %}
+              </MULTICOMPONENTITEMLIST.LIST>
+              {% endfor %}
+            </MULTICOMPONENTLIST.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

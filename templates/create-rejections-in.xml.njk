@@ -1,0 +1,36 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Rejections In" ACTION="Create">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Rejections In</VOUCHERTYPENAME>
+            {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
+            <NARRATION>{{ narration }}</NARRATION>
+            {% for item in items %}<ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
+              <AMOUNT>-{{ item.amount }}</AMOUNT>
+              <ACTUALQTY>{{ item.qty }} {{ item.unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              {% if item.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
+                <AMOUNT>-{{ item.amount }}</AMOUNT>
+                <ACTUALQTY>{{ item.qty }} {{ item.unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+            </ALLINVENTORYENTRIES.LIST>
+            {% endfor %}
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

@@ -468,6 +468,142 @@ export const tools = [
     },
   },
   {
+    name: "create_material_in",
+    description:
+      "Create a Material In voucher in TallyPrime — records stock received back from a job worker (or any party " +
+      "holding your material for processing), tracked against that party's ledger without a real accounting " +
+      "posting (this is Tally's job-work memorandum tracking, not a purchase). Uses Tally's native 'Multi " +
+      "Consumption Voucher View' shape. EXTRAPOLATED from a genuine Tally-exported XML template for this exact " +
+      "voucher type, not verified against a real manually-created example in this project — verify carefully " +
+      "after use, especially on a company with godown/batch tracking enabled (pass godown on every item).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        partyLedger: { type: "string", description: "Exact name of the job worker/party ledger this material is being received from" },
+        items: {
+          type: "array",
+          description: "One or more stock items being received.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item received" },
+              qty: { type: "number", description: "Quantity received" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "create_material_out",
+    description:
+      "Create a Material Out voucher in TallyPrime — records stock sent out to a job worker for processing, " +
+      "tracked against that party's ledger without a real accounting posting (job-work memorandum tracking, not " +
+      "a sale). Mirror of create_material_in. Same EXTRAPOLATED caveat and godown requirement apply.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        partyLedger: { type: "string", description: "Exact name of the job worker/party ledger this material is being sent to" },
+        items: {
+          type: "array",
+          description: "One or more stock items being sent out.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item sent out" },
+              qty: { type: "number", description: "Quantity sent" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "create_rejections_in",
+    description:
+      "Create a Rejections In voucher in TallyPrime — records goods rejected and returned to you (e.g. by a " +
+      "customer or a job worker returning defective components). Inventory movement only, same shape as a " +
+      "Sales/Purchase item line but with no party ledger. EXTRAPOLATED: no confirmed real-world XML example was " +
+      "available for this exact voucher type — built by analogy to Tally's other inventory-only voucher shapes " +
+      "(Physical Stock). Verify carefully after use, and expect to need godown on every item if the company has " +
+      "location tracking enabled.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        items: {
+          type: "array",
+          description: "One or more stock items being received back as rejected.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity received" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+      },
+      required: ["date", "items"],
+    },
+  },
+  {
+    name: "create_rejections_out",
+    description:
+      "Create a Rejections Out voucher in TallyPrime — records goods you're rejecting and returning outward " +
+      "(e.g. back to a supplier, or components you're sending back to a job worker as defective). Mirror of " +
+      "create_rejections_in. Same EXTRAPOLATED caveat and godown requirement apply.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        items: {
+          type: "array",
+          description: "One or more stock items being sent out as rejected.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity sent" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+      },
+      required: ["date", "items"],
+    },
+  },
+  {
     name: "create_physical_stock",
     description:
       "Create a Physical Stock voucher in TallyPrime — records the actual counted quantity of one or more stock " +
@@ -973,15 +1109,24 @@ export const tools = [
   {
     name: "create_unit",
     description:
-      "Create a new simple Unit of Measure in TallyPrime (e.g. 'Kg', 'Box', 'Ltr'). Required before creating or " +
-      "invoicing a stock item in a unit that doesn't exist yet — stock item/invoice tools fail with 'Unit does not " +
-      "exist!' otherwise. Only covers simple units, not compound units (e.g. 'Box of 12 Nos').",
+      "Create a new Unit of Measure in TallyPrime — a simple unit (e.g. 'Kg', 'Box', 'Ltr') by default, or a " +
+      "compound unit (e.g. 'Box of 12 Nos') by passing baseUnit/additionalUnit/conversion. Required before " +
+      "creating or invoicing a stock item in a unit that doesn't exist yet — stock item/invoice tools fail with " +
+      "'Unit does not exist!' otherwise. For a compound unit, both baseUnit and additionalUnit must already " +
+      "exist as simple units first (confirmed live pattern: create both simple units, then the compound unit " +
+      "referencing them). A simple unit's symbol (and baseUnit/additionalUnit, since those reference existing " +
+      "simple units' symbols) cannot contain whitespace — confirmed live: Tally rejects that with 'Master name " +
+      "contains invalid characters', checked client-side before this ever reaches Tally. A compound unit's own " +
+      "display name (e.g. 'Box of 12 Nos') can still contain spaces.",
     inputSchema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "The unit symbol as referenced elsewhere, e.g. 'Kg', 'Box', 'Nos'" },
+        symbol: { type: "string", description: "The unit symbol as referenced elsewhere, e.g. 'Kg', 'Box', 'Box of 12 Nos'" },
         formalName: { type: "string", description: "Full name, e.g. 'Kilograms'. Optional." },
-        decimalPlaces: { type: "number", description: "Decimal precision for quantities in this unit. Defaults to 0 (whole numbers only, e.g. 'Nos')." },
+        decimalPlaces: { type: "number", description: "Decimal precision for quantities in this simple unit. Defaults to 0 (whole numbers only, e.g. 'Nos'). Ignored for a compound unit." },
+        baseUnit: { type: "string", description: "For a compound unit only: the larger/outer unit, e.g. 'Box'. Must already exist as a simple unit." },
+        additionalUnit: { type: "string", description: "For a compound unit only: the smaller unit it's made of, e.g. 'Nos'. Must already exist as a simple unit. Required if baseUnit is set." },
+        conversion: { type: "number", description: "For a compound unit only: how many additionalUnit make one baseUnit, e.g. 12. Required if baseUnit is set." },
       },
       required: ["symbol"],
     },
@@ -1137,6 +1282,47 @@ export const tools = [
         name: { type: "string", description: "Exact name of the stock item to delete" },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "set_bill_of_materials",
+    description:
+      "Attach a Bill of Materials (recipe) to an existing finished-goods stock item, so a Manufacturing/Stock " +
+      "Journal producing this item can have its component quantities computed from a fixed ratio instead of " +
+      "typed by hand every time. Uses Tally's native MULTICOMPONENTLIST.LIST structure. This is a pure " +
+      "convenience layer over create_stock_journal — it does not affect stock or post anything by itself; you " +
+      "still call create_stock_journal to actually record a production run, scaling each component's qty by " +
+      "the ratio to basicQty yourself (this tool does not auto-compute that scaling for you). EXTRAPOLATED from " +
+      "a genuine Tally-exported XML template's stock item master shape, not reverse-engineered from a real " +
+      "manually-created BOM — verify carefully after use, especially natureOfItem's accepted values.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        stockItem: { type: "string", description: "Exact name of the existing finished-goods stock item to attach this BOM to" },
+        componentListName: { type: "string", description: "Name for this BOM/recipe (Tally allows more than one per item). Defaults to 'Primary'." },
+        basicQty: { type: "number", description: "The quantity of stockItem this recipe produces (the ratio base). Defaults to 1." },
+        unit: { type: "string", description: "Unit of measure for basicQty, e.g. 'Nos'." },
+        components: {
+          type: "array",
+          description: "The raw materials (and any co-products/scrap) in this recipe.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the component stock item" },
+              qty: { type: "number", description: "Quantity of this component required to produce basicQty of the finished item" },
+              unit: { type: "string", description: "Unit of measure for qty" },
+              natureOfItem: {
+                type: "string",
+                enum: ["Component", "Co-Product", "By-Product", "Scrap"],
+                description: "What role this line plays in the recipe. Defaults to 'Component' (a consumed raw material).",
+              },
+              godown: { type: "string", description: "Godown this component is normally drawn from (optional)." },
+            },
+            required: ["stockItem", "qty", "unit"],
+          },
+        },
+      },
+      required: ["stockItem", "components"],
     },
   },
   {
@@ -1508,6 +1694,76 @@ function updateStockJournalXml(
   });
 }
 
+type MaterialMoveItemInput = {
+  stockItem: string;
+  qty: number;
+  rate: number;
+  unit: string;
+  godown?: string;
+  batchName?: string;
+};
+
+function computeMaterialMoveItems(items: MaterialMoveItemInput[]) {
+  return items.map((item) => ({
+    ...item,
+    amount: item.qty * item.rate,
+    batchName: item.batchName ?? "Primary Batch",
+  }));
+}
+
+function createMaterialInXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: MaterialMoveItemInput[];
+  voucherNumber?: string;
+}): string {
+  const computedItems = computeMaterialMoveItems(args.items);
+  return render("create-material-in.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: computedItems,
+    totalAmount: computedItems.reduce((s, i) => s + i.amount, 0),
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createMaterialOutXml(args: Parameters<typeof createMaterialInXml>[0]): string {
+  const computedItems = computeMaterialMoveItems(args.items);
+  return render("create-material-out.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: computedItems,
+    totalAmount: computedItems.reduce((s, i) => s + i.amount, 0),
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createRejectionsInXml(args: {
+  date: string;
+  narration?: string;
+  items: MaterialMoveItemInput[];
+  voucherNumber?: string;
+}): string {
+  return render("create-rejections-in.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    items: computeMaterialMoveItems(args.items),
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createRejectionsOutXml(args: Parameters<typeof createRejectionsInXml>[0]): string {
+  return render("create-rejections-out.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    items: computeMaterialMoveItems(args.items),
+    voucherNumber: args.voucherNumber,
+  });
+}
+
 type PhysicalStockItemInput = {
   stockItem: string;
   actualQty: number;
@@ -1783,11 +2039,39 @@ function createStockGroupXml(name: string, parent: string): string {
   return render("create-stock-group.xml.njk", { name, parent: normalizeParent(parent) });
 }
 
-function createUnitXml(args: { symbol: string; formalName?: string; decimalPlaces?: number }): string {
+function createUnitXml(args: {
+  symbol: string;
+  formalName?: string;
+  decimalPlaces?: number;
+  baseUnit?: string;
+  additionalUnit?: string;
+  conversion?: number;
+}): string {
+  if (args.baseUnit && (!args.additionalUnit || !args.conversion)) {
+    throw new Error("additionalUnit and conversion are both required when baseUnit is set (compound unit).");
+  }
+  // Confirmed live: Tally rejects a simple unit's SYMBOL/NAME containing whitespace
+  // with "Master name contains invalid characters" — but a compound unit's own
+  // NAME (e.g. "Box of 12 Nos") is unaffected; only the simple units it references
+  // (baseUnit/additionalUnit) need to be space-free, since those are real SYMBOLs.
+  const namesToCheck = args.baseUnit ? [args.baseUnit, args.additionalUnit as string] : [args.symbol];
+  for (const name of namesToCheck) {
+    if (/\s/.test(name)) {
+      throw new Error(
+        `Unit symbol "${name}" contains whitespace — Tally rejects this with "Master name contains invalid ` +
+          `characters" for a simple unit's symbol (confirmed live). Use a space-free symbol, e.g. "Box" or ` +
+          `"Nos", not "Box Unit". A compound unit's own display name (the 'symbol' argument when baseUnit is ` +
+          `set) can still contain spaces, e.g. "Box of 12 Nos" — only the simple units it references cannot.`
+      );
+    }
+  }
   return render("create-unit.xml.njk", {
     symbol: args.symbol,
     formalName: args.formalName,
     decimalPlaces: args.decimalPlaces ?? 0,
+    baseUnit: args.baseUnit,
+    additionalUnit: args.additionalUnit,
+    conversion: args.conversion,
   });
 }
 
@@ -1835,6 +2119,30 @@ function updateStockItemXml(args: {
   return render("update-stock-item.xml.njk", {
     ...args,
     group: args.group ? normalizeParent(args.group) : undefined,
+  });
+}
+
+type BomComponentInput = {
+  stockItem: string;
+  qty: number;
+  unit: string;
+  natureOfItem?: string;
+  godown?: string;
+};
+
+function setBillOfMaterialsXml(args: {
+  stockItem: string;
+  componentListName?: string;
+  basicQty?: number;
+  unit?: string;
+  components: BomComponentInput[];
+}): string {
+  return render("set-bill-of-materials.xml.njk", {
+    stockItem: args.stockItem,
+    componentListName: args.componentListName ?? "Primary",
+    basicQty: args.basicQty ?? 1,
+    unit: args.unit ?? "",
+    components: args.components.map((c) => ({ ...c, natureOfItem: c.natureOfItem ?? "Component" })),
   });
 }
 
@@ -2353,6 +2661,34 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "create_material_in": {
+      const materialArgs = args as Parameters<typeof createMaterialInXml>[0];
+      const xml = createMaterialInXml(materialArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_material_out": {
+      const materialArgs = args as Parameters<typeof createMaterialOutXml>[0];
+      const xml = createMaterialOutXml(materialArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_rejections_in": {
+      const rejArgs = args as Parameters<typeof createRejectionsInXml>[0];
+      const xml = createRejectionsInXml(rejArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_rejections_out": {
+      const rejArgs = args as Parameters<typeof createRejectionsOutXml>[0];
+      const xml = createRejectionsOutXml(rejArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_physical_stock": {
       const physicalStockArgs = args as Parameters<typeof createPhysicalStockXml>[0];
       const xml = createPhysicalStockXml(physicalStockArgs);
@@ -2472,6 +2808,13 @@ export async function handleTool(
     case "delete_stock_item": {
       const { name: itemName } = args as { name: string };
       const xml = deleteStockItemXml(itemName);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "set_bill_of_materials": {
+      const bomArgs = args as Parameters<typeof setBillOfMaterialsXml>[0];
+      const xml = setBillOfMaterialsXml(bomArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }

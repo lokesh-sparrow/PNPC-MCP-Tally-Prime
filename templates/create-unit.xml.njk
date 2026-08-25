@@ -9,10 +9,15 @@
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
           <UNIT NAME="{{ symbol }}" ACTION="Create">
             <NAME>{{ symbol }}</NAME>
-            <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
+            {% if baseUnit %}<ISSIMPLEUNIT>No</ISSIMPLEUNIT>
+            <BASEUNITS>{{ baseUnit }}</BASEUNITS>
+            <ADDITIONALUNITS>{{ additionalUnit }}</ADDITIONALUNITS>
+            <CONVERSION>{{ conversion }}</CONVERSION>
+            {% else %}<ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
             <SYMBOL>{{ symbol }}</SYMBOL>
-            {% if formalName %}<FORMALNAME>{{ formalName }}</FORMALNAME>{% endif %}
             <DECIMALPLACES>{{ decimalPlaces }}</DECIMALPLACES>
+            {% endif %}
+            {% if formalName %}<FORMALNAME>{{ formalName }}</FORMALNAME>{% endif %}
           </UNIT>
         </TALLYMESSAGE>
       </REQUESTDATA>
