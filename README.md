@@ -225,17 +225,32 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 Every tool call — read or write — is appended to a local JSONL log file
 (never rewritten or truncated, only appended to), so there's always a
 plain-text record of exactly what an agent did against this Tally company.
-Write operations can also be locked down before an agent ever touches them,
-via the environment variables below — see the table for `TALLY_PERMISSION_MODE`
+
+Write operations can be locked down before an agent ever touches them —
+**no config editing required.** If you installed via the `.mcpb`, Claude
+Desktop's Extensions settings screen for this connector shows a **"Read-only
+mode"** toggle and an optional **"Disabled tools"** field directly.
+
+> ⚠️ **Confirmed live: you must fully quit and reopen Claude Desktop after
+> changing these settings** — saving the settings screen alone does *not*
+> apply the new value. This connector runs as a long-lived child process
+> that only reads its configuration once, at startup; Claude Desktop doesn't
+> push new values into an already-running extension. Toggling "Read-only
+> mode" on and expecting it to take effect immediately will fail silently
+> (the next write still goes through) until you restart the app.
+
+Running this outside Claude Desktop (HTTP mode, manual config)? Use the
+environment variables in the table below instead — see `TALLY_PERMISSION_MODE`
 and `TALLY_DISABLED_TOOLS`.
 
 ## Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `TALLY_URL` | `http://localhost:9000` | Tally's HTTP gateway address |
-| `TALLY_PERMISSION_MODE` | `read_write` | Set to `read_only` to block every write tool before it reaches Tally — the call fails immediately with a clear denial, logged to the audit log as `denied` |
-| `TALLY_DISABLED_TOOLS` | _(unset)_ | Comma-separated exact tool names to block regardless of mode, e.g. `delete_voucher,delete_master` to allow writes but forbid deletion |
+| `TALLY_URL` | `http://localhost:9000` | Tally's HTTP gateway address. Installed via `.mcpb`? This is the "Tally Gateway URL" field in Claude Desktop's Extensions settings — no manifest editing needed |
+| `TALLY_READ_ONLY` | `false` | Set to `true` to block every write tool before it reaches Tally. This is the "Read-only mode" toggle in Claude Desktop's Extensions settings for `.mcpb` installs — same effect, no config editing |
+| `TALLY_PERMISSION_MODE` | `read_write` | String-form equivalent of `TALLY_READ_ONLY`, for HTTP/manual deployments — set to `read_only` for the same block. Either variable blocks writes; you don't need to set both |
+| `TALLY_DISABLED_TOOLS` | _(unset)_ | Comma-separated exact tool names to block regardless of mode, e.g. `delete_voucher,delete_master` to allow writes but forbid deletion. This is the "Disabled tools (advanced)" field in Claude Desktop's Extensions settings for `.mcpb` installs |
 | `TALLY_AUDIT_LOG_PATH` | `audit.log.jsonl` next to the installed package | Where the append-only audit log is written. Point multiple connector instances at one shared path if you want a single combined log |
 | `PORT` | `3939` | Port for `npm run start:http` (remote mode only) |
 | `TALLY_MCP_TOKEN` | _(unset)_ | Bearer token required on the HTTP server's `/mcp` endpoint if set (remote mode only) |

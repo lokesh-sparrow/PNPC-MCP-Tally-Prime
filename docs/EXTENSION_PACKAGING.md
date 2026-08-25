@@ -29,10 +29,13 @@ the `tally_url` setting (defaults to `http://localhost:9000`), and launches
 - `server.mcp_config` — the actual launch command Claude Desktop runs.
   `${__dirname}` is substituted with the extension's install directory at
   runtime.
-- `user_config` — settings surfaced in Claude Desktop's UI. Currently just
-  `tally_url`; add more here (e.g. an auth token) if you extend the server
-  to need them, then reference them as `${user_config.<key>}` in
-  `mcp_config`.
+- `user_config` — settings surfaced directly in Claude Desktop's Extensions
+  install/settings screen for this connector: `tally_url` (string), `read_only_mode`
+  (boolean, maps to `TALLY_READ_ONLY`), and `disabled_tools` (string, maps to
+  `TALLY_DISABLED_TOOLS`). Add more here if you extend the server to need
+  them, then reference them as `${user_config.<key>}` in `mcp_config.env`.
+  Run `npx mcpb validate manifest.json` after editing this block — it
+  validates against the real MCPB schema and catches typos before packing.
 - This packages the **stdio** entry point ([`src/index.ts`](../src/index.ts)),
   not the HTTP one — `.dxt` extensions are always launched locally by Claude
   Desktop. For remote use, see [HTTP_DEPLOYMENT.md](./HTTP_DEPLOYMENT.md)

@@ -85,10 +85,14 @@ Every tool call — read or write — passes through `server.ts`'s
 `CallToolRequestSchema` handler, which wraps `handleTool` with two things:
 
 1. **Permission check** (`permissions.ts`, before `handleTool` even runs): if
-   `TALLY_PERMISSION_MODE=read_only`, any tool not in `server.ts`'s
-   `READ_ONLY_TOOLS` set is denied outright — never reaches `handleTool`,
-   never builds XML, never touches Tally. `TALLY_DISABLED_TOOLS` (comma-
-   separated exact names) denies specific tools regardless of mode.
+   `TALLY_READ_ONLY=true` or `TALLY_PERMISSION_MODE=read_only` (either one —
+   the former is what Claude Desktop's Extensions UI "Read-only mode" toggle
+   sets via `manifest.json`'s `user_config.read_only_mode`; the latter is the
+   string-form equivalent for HTTP/manual deployments), any tool not in
+   `server.ts`'s `READ_ONLY_TOOLS` set is denied outright — never reaches
+   `handleTool`, never builds XML, never touches Tally. `TALLY_DISABLED_TOOLS`
+   (comma-separated exact names, also exposed as the "Disabled tools" field
+   in the Extensions UI) denies specific tools regardless of mode.
 2. **Audit logging** (`audit.ts`, after `handleTool` resolves or throws):
    appends one JSON line — `ts`, `tool`, `readOnly`, `outcome`
    (`success`/`error`/`denied`), `detail` (result text or error message,

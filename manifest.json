@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
@@ -15,6 +15,26 @@
   "support": "https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme",
   "license": "ISC",
   "icon": "assets/icon.png",
+  "user_config": {
+    "tally_url": {
+      "type": "string",
+      "title": "Tally Gateway URL",
+      "description": "TallyPrime's HTTP gateway address. Change the port here if you're running more than one Tally connector on this machine and need to avoid a port conflict (Tally's own default gateway port is 9000).",
+      "default": "http://localhost:9000"
+    },
+    "read_only_mode": {
+      "type": "boolean",
+      "title": "Read-only mode",
+      "description": "When on, every write tool (create/update/delete) is blocked before it ever reaches Tally. Turn this on for anyone who should only ask questions, never change data.",
+      "default": false
+    },
+    "disabled_tools": {
+      "type": "string",
+      "title": "Disabled tools (advanced)",
+      "description": "Optional comma-separated exact tool names to block regardless of the read-only setting above, e.g. delete_voucher,delete_master to allow writes but forbid deletion. Leave blank to allow everything not already blocked by read-only mode.",
+      "default": ""
+    }
+  },
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
@@ -22,7 +42,9 @@
       "command": "node",
       "args": ["${__dirname}/dist/index.js"],
       "env": {
-        "TALLY_URL": "http://localhost:9000"
+        "TALLY_URL": "${user_config.tally_url}",
+        "TALLY_READ_ONLY": "${user_config.read_only_mode}",
+        "TALLY_DISABLED_TOOLS": "${user_config.disabled_tools}"
       }
     }
   },

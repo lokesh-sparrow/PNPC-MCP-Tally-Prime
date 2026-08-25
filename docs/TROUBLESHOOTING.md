@@ -195,10 +195,20 @@ around the refusal.
   package). It's opened in append mode on every write and never rewritten or
   truncated, so it's always a true record. Read it back with `get_audit_log`
   (`limit?`, `toolFilter?`).
-- Set `TALLY_PERMISSION_MODE=read_only` to block every write tool before it
-  reaches Tally — the denial itself is also logged (`outcome: "denied"`).
+- Set `TALLY_PERMISSION_MODE=read_only` (or, via Claude Desktop's Extensions
+  settings screen, turn on "Read-only mode") to block every write tool
+  before it reaches Tally — the denial itself is also logged
+  (`outcome: "denied"`).
 - Set `TALLY_DISABLED_TOOLS` (comma-separated exact tool names, e.g.
-  `delete_voucher,delete_master`) to block specific tools regardless of mode.
+  `delete_voucher,delete_master`, or the "Disabled tools" field in the
+  Extensions settings screen) to block specific tools regardless of mode.
+- **Confirmed live: changing the Read-only mode toggle or Disabled tools
+  field in Claude Desktop's Extensions settings does NOT take effect until
+  you fully quit and reopen Claude Desktop.** Saving the settings screen is
+  not enough — verified by making a write call immediately after toggling
+  read-only mode on (it succeeded, unblocked) versus after a full restart
+  (it was correctly denied). This connector reads its config once at
+  process startup; there's no live-reload mechanism.
 - A logging failure (disk full, permissions) never blocks the underlying
   Tally operation — it's swallowed silently rather than surfaced, by design.
 
