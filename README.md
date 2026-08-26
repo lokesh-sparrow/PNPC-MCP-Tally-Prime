@@ -286,6 +286,10 @@ Running this outside Claude Desktop (HTTP mode, manual config)? Use the
 environment variables in the table below instead — see `TALLY_PERMISSION_MODE`
 and `TALLY_DISABLED_TOOLS`.
 
+**Not sure what to actually type in chat to use one of these?** See the
+[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html) —
+a plain-English example prompt for all 72 tools, grouped by what they're for.
+
 ## Environment variables
 
 | Variable | Default | Purpose |
