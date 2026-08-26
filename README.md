@@ -97,7 +97,9 @@ where that config lives.
 
 For browser-based or mobile LLM clients that can't reach a TallyPrime
 instance running on your local PC, the server can run as a small web
-service with OAuth-protected access instead. This is more involved —
+service instead, protected by a single bearer token you set yourself
+(`TALLY_MCP_TOKEN`) — not OAuth. This is more involved and puts your
+Tally gateway on the network, so treat the token like a password —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
 ## Available tools (72 total)
