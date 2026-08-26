@@ -104,6 +104,10 @@ see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
 ## Available tools (72 total)
 
+**Not sure what to actually type in chat to use one of these?** See the
+**[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html)** —
+a plain-English example prompt for all 72 tools, grouped by what they're for.
+
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
@@ -285,10 +289,6 @@ directly — no config editing required either way.
 Running this outside Claude Desktop (HTTP mode, manual config)? Use the
 environment variables in the table below instead — see `TALLY_PERMISSION_MODE`
 and `TALLY_DISABLED_TOOLS`.
-
-**Not sure what to actually type in chat to use one of these?** See the
-[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html) —
-a plain-English example prompt for all 72 tools, grouped by what they're for.
 
 ## Environment variables
 
