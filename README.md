@@ -104,9 +104,10 @@ see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
 ## Available tools (72 total)
 
-**Not sure what to actually type in chat to use one of these?** See the
-**[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html)** —
-a plain-English example prompt for all 72 tools, grouped by what they're for.
+You don't call these directly — just describe what you want in chat and Claude
+picks the right one. For a plain-English example prompt per tool, grouped by
+what they're for, see the
+**[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html)**.
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
