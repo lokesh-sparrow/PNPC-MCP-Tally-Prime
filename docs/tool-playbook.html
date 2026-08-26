@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tally Connector Playbook</title>
+<meta name="description" content="Plain-English example prompts for all 72 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📒</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #f6f4ee;
+    --paper-raised: #fbfaf6;
+    --ink: #1c2621;
+    --ink-soft: #4b564f;
+    --ink-faint: #7c8880;
+    --accent: #1f6f52;
+    --accent-deep: #144937;
+    --accent-soft: #e3ede6;
+    --line: #dad6c8;
+    --line-soft: #e8e5da;
+    --chip-bg: #ece8da;
+    --chat-bg: #ffffff;
+    --chat-border: #e0dccb;
+    --dot-read: #4a6fa5;
+    --dot-write: #b5622f;
+    --dot-report: #1f6f52;
+    --dot-admin: #8a8478;
+    --shadow: 0 1px 2px rgba(28, 38, 33, 0.06);
+    --radius: 3px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141b17;
+      --paper-raised: #1a2320;
+      --ink: #eef1ea;
+      --ink-soft: #b6bfb4;
+      --ink-faint: #7f8a80;
+      --accent: #4fae87;
+      --accent-deep: #7ac9a6;
+      --accent-soft: #1f2e27;
+      --line: #2c362f;
+      --line-soft: #232c26;
+      --chip-bg: #202a24;
+      --chat-bg: #1a2320;
+      --chat-border: #2c362f;
+      --dot-read: #7d9fd6;
+      --dot-write: #d68a5c;
+      --dot-report: #4fae87;
+      --dot-admin: #9aa39a;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #141b17;
+    --paper-raised: #1a2320;
+    --ink: #eef1ea;
+    --ink-soft: #b6bfb4;
+    --ink-faint: #7f8a80;
+    --accent: #4fae87;
+    --accent-deep: #7ac9a6;
+    --accent-soft: #1f2e27;
+    --line: #2c362f;
+    --line-soft: #232c26;
+    --chip-bg: #202a24;
+    --chat-bg: #1a2320;
+    --chat-border: #2c362f;
+    --dot-read: #7d9fd6;
+    --dot-write: #d68a5c;
+    --dot-report: #4fae87;
+    --dot-admin: #9aa39a;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  a { color: var(--accent-deep); }
+
+  h1, h2, h3 {
+    font-family: "Source Serif 4", Georgia, serif;
+    text-wrap: balance;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+
+  /* ---- Header / hero ---- */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 56px 32px 40px;
+    border-bottom: 1px solid var(--line);
+  }
+  .masthead .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin: 0 0 14px;
+  }
+  .masthead h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 600;
+    line-height: 1.15;
+    max-width: 16ch;
+  }
+  .masthead p.lede {
+    max-width: 62ch;
+    color: var(--ink-soft);
+    font-size: 16px;
+    margin: 16px 0 0;
+  }
+  .masthead .stat-row {
+    display: flex;
+    gap: 28px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat .n {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label {
+    font-size: 12px;
+    color: var(--ink-faint);
+    letter-spacing: 0.03em;
+  }
+
+  /* ---- Sidebar nav ---- */
+  nav.toc {
+    padding: 32px 20px 40px;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+  }
+  nav.toc .toc-title {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+    padding: 0 8px;
+  }
+  nav.toc a {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    text-decoration: none;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    padding: 7px 8px;
+    border-radius: var(--radius);
+  }
+  nav.toc a:hover { background: var(--paper-raised); color: var(--ink); }
+  nav.toc a .count {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  nav.toc .legend {
+    margin-top: 24px;
+    padding: 14px 8px 0;
+    border-top: 1px solid var(--line-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  /* ---- Main content ---- */
+  main { padding: 40px 32px 100px; min-width: 0; }
+
+  section.category { margin-bottom: 52px; scroll-margin-top: 20px; }
+  section.category .cat-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  section.category h2 { font-size: 22px; font-weight: 600; }
+  section.category .cat-count {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  section.category .cat-note {
+    color: var(--ink-soft);
+    font-size: 14px;
+    max-width: 68ch;
+    margin: 6px 0 22px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px 18px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card .tool-name {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--chip-bg);
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    color: var(--ink);
+    word-break: break-word;
+  }
+  .card p.desc {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  .prompt {
+    background: var(--chat-bg);
+    border: 1px solid var(--chat-border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .prompt .say {
+    display: block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 28px 32px 48px;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+    max-width: 68ch;
+  }
+
+  ::selection { background: var(--accent-soft); }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc {
+      position: static;
+      max-height: none;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      padding: 20px 20px 8px;
+    }
+    nav.toc .toc-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    nav.toc a { padding: 6px 10px; background: var(--paper-raised); border-radius: 999px; }
+    nav.toc a .count { display: none; }
+    nav.toc .legend { display: none; }
+    .masthead { padding: 40px 20px 28px; }
+    main { padding: 28px 20px 80px; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .card { transition: transform 120ms ease, box-shadow 120ms ease; }
+    .card:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(28,38,33,0.08); }
+  }
+
+  a:focus-visible, .card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <header class="masthead">
+    <p class="eyebrow">PNPC-MCP-Tally-Prime · Claude Desktop chat</p>
+    <h1>The Tally Connector Playbook</h1>
+    <p class="lede">
+      Every one of the 72 tools this connector gives Claude, with a plain-English
+      example of the sentence you'd actually type in a Claude Desktop chat to use it.
+      Nothing here is a command syntax — Claude reads your request and picks the
+      right tool itself.
+    </p>
+    <div class="stat-row">
+      <div class="stat"><span class="n">72</span><span class="label">tools total</span></div>
+      <div class="stat"><span class="n">7</span><span class="label">categories</span></div>
+      <div class="stat"><span class="n">v1.7.0</span><span class="label">current release</span></div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <p class="toc-title">Jump to</p>
+    <div class="toc-list" id="tocList"></div>
+    <div class="legend">
+      <div class="legend-row"><span class="dot" style="background:var(--dot-report)"></span>Reports &amp; lookups</div>
+      <div class="legend-row"><span class="dot" style="background:var(--dot-write)"></span>Creates / changes something</div>
+      <div class="legend-row"><span class="dot" style="background:var(--dot-admin)"></span>Setup &amp; session control</div>
+    </div>
+  </nav>
+
+  <main id="main"></main>
+
+  <footer>
+    Read-only mode blocks every tool marked with an amber dot until it's turned off
+    in the extension's settings. Full field-by-field reference: <a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme">README</a>
+    and <a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/blob/main/docs/TOOLS.md">docs/TOOLS.md</a>.
+  </footer>
+</div>
+
+<script>
+  // kind: "report" (green, read data), "write" (amber, changes Tally),
+  // "admin" (grey, setup/session control, not a write to accounting data)
+  const DATA = [
+    {
+      title: "Reports & lookups",
+      id: "reports",
+      note: "Ask about the books — nothing here changes anything in Tally.",
+      tools: [
+        ["get_ledgers", "Lists every ledger (account) in the company.", "List all my ledgers"],
+        ["get_stock_items", "Lists every stock item.", "Show me every stock item we have set up"],
+        ["get_vouchers", "All vouchers in a date range — the Day Book, correctly scoped to the dates given.", "Show me every voucher from 1 Jan to 31 Mar 2024"],
+        ["get_company_info", "Which company is currently open in Tally.", "Which Tally company is currently open?"],
+        ["get_profit_and_loss", "P&L for a date range.", "Give me the P&L for this financial year"],
+        ["get_balance_sheet", "Balance Sheet as of a date.", "Show me the Balance Sheet as of 31 December 2024"],
+        ["get_trial_balance", "Trial Balance for a date range.", "Pull the Trial Balance for Q1 2024"],
+        ["get_groups", "Lists account groups (Sundry Debtors, Fixed Assets, etc).", "What account groups do we have?"],
+        ["get_voucher_types", "Lists configured voucher types.", "What voucher types are set up in this company?"],
+        ["get_cost_centres", "Lists cost centres.", "List all our cost centres"],
+        ["get_stock_summary", "Opening/closing stock quantity and value per item, as of a date.", "What's our stock summary as of today?"],
+        ["get_bills_receivable", "Outstanding customer bills as of a date.", "What bills are outstanding from customers right now?"],
+        ["get_bills_payable", "Outstanding supplier bills as of a date.", "What do we currently owe suppliers?"],
+        ["get_cash_flow", "Cash Flow statement for a date range.", "Show me the Cash Flow statement for 2024"],
+        ["get_funds_flow", "Funds Flow statement for a date range.", "Give me the Funds Flow report for last quarter"],
+        ["get_ratio_analysis", "Standard financial ratios (current ratio, quick ratio, turnover, etc).", "What are our key financial ratios this year?"],
+        ["get_sales_register", "Month-by-month Sales voucher summary.", "Show me the sales register for 2024, month by month"],
+        ["get_purchase_register", "Month-by-month Purchase voucher summary.", "Show me the purchase register for 2024"],
+        ["get_journal_register", "Month-by-month Journal voucher summary.", "Give me the journal register for this year"],
+        ["get_payment_register", "Month-by-month Payment voucher summary.", "Show me the payment register for last quarter"],
+        ["get_receipts_and_payments", "Cash/bank-ledger view of receipts and payments together — the nearest thing to a Cash Book here.", "What money came in and went out through our bank accounts this month?"],
+        ["get_reorder_status", "Stock items with a reorder level set, and how they stand against it.", "Which items are below their reorder level?"],
+        ["get_vat_liability_summary", "UAE VAT position for a period — Input, Output, Reverse Charge, running total.", "What's our VAT liability for this quarter?"],
+        ["get_gst_liability_summary", "India GST position for a period, same shape as the VAT summary.", "What's our GST liability for this quarter?"],
+        ["get_ledger_vouchers", "Every voucher posted to one specific ledger in a date range.", "Show me every transaction on the ABC Trading LLC ledger this year"]
+      ]
+    },
+    {
+      title: "Accounting vouchers",
+      id: "accounting",
+      note: "Payments, receipts, journals, and item-line invoices — the everyday entries.",
+      tools: [
+        ["create_voucher", "A plain ledger-to-ledger voucher — Payment, Receipt, Journal, Contra, or a Sales/Purchase entry with no stock items.", "Record a payment of AED 5,000 from Bank to ABC Trading LLC for rent"],
+        ["update_voucher", "Edits an existing plain voucher's amount, ledgers, or narration.", "That payment to ABC Trading LLC dated 5 March — change the amount to AED 5,500"],
+        ["delete_voucher", "Permanently removes a voucher.", "Delete Payment voucher number 214 dated 5 March"],
+        ["create_sales_invoice", "A real Sales invoice with stock item lines and optional VAT.", "Create a sales invoice to XYZ LLC for 10 units of Item A at AED 100 each, plus 5% VAT"],
+        ["update_sales_invoice", "Replaces an existing Sales invoice's item lines.", "Sales invoice number 88 to XYZ LLC — change the quantity to 15 units"],
+        ["create_purchase_invoice", "A real Purchase invoice with stock item lines and optional VAT.", "Record a purchase invoice from ABC Supplies for 20 units of Item B at AED 50 each"],
+        ["update_purchase_invoice", "Replaces an existing Purchase invoice's item lines.", "Purchase invoice 45 from ABC Supplies — update the rate to AED 55 per unit"],
+        ["create_credit_note", "A Sales return — reverses stock and revenue for returned items.", "Create a credit note for 3 units of Item A returned by XYZ LLC"],
+        ["update_credit_note", "Replaces an existing Credit Note's lines.", "Credit note 12 to XYZ LLC — change the quantity returned to 5 units"],
+        ["create_debit_note", "A Purchase return — reverses stock and expense for returned items.", "Create a debit note for 2 units of Item B we're returning to ABC Supplies"],
+        ["update_debit_note", "Replaces an existing Debit Note's lines.", "Debit note 7 to ABC Supplies — change it to 3 units returned"]
+      ]
+    },
+    {
+      title: "Inventory vouchers",
+      id: "inventory",
+      note: "Moving stock without necessarily invoicing anyone — dispatch, receipt, counts, and job-work tracking.",
+      tools: [
+        ["create_stock_journal", "Moves stock from raw materials into finished/by-products in one entry, with optional extra costs folded in.", "Convert 50 units of Raw Material A and 20 of Raw Material B into 60 units of Finished Product X"],
+        ["update_stock_journal", "Replaces an existing Stock Journal's source/destination lines.", "Stock journal number 9 — change the output quantity to 65 units"],
+        ["create_material_in", "Stock received back from a job worker, tracked against their ledger, no accounting posting.", "Record 30 units of Item C received back from Job Worker LLC"],
+        ["create_material_out", "Stock sent out to a job worker for processing.", "Send 40 units of Item C out to Job Worker LLC for processing"],
+        ["create_rejections_in", "Goods rejected and returned to us — inventory only, no party ledger.", "Record 5 units of Item A returned to us as rejected"],
+        ["create_rejections_out", "Goods we're rejecting and sending back out.", "Send 3 defective units of Item B back out as rejected"],
+        ["create_physical_stock", "Records a physical count and corrects the book quantity to match.", "We counted 95 units of Item A on the shelf, book shows 100 — record the physical count"],
+        ["update_physical_stock", "Replaces an existing Physical Stock voucher's counted lines.", "That physical count from yesterday — correct Item A's count to 92 units"],
+        ["create_delivery_note", "Goods dispatched to a customer before or without a full invoice.", "Create a delivery note for 10 units of Item A going out to XYZ LLC"],
+        ["create_receipt_note", "Goods received from a supplier before or without a full invoice.", "Create a receipt note for 20 units of Item B received from ABC Supplies"]
+      ]
+    },
+    {
+      title: "Order vouchers",
+      id: "orders",
+      note: "Commitments — nothing moves stock or ledgers until it's actually delivered/invoiced.",
+      tools: [
+        ["create_sales_order", "A future commitment to sell — needs an order number and a due date per item.", "Create a sales order for XYZ LLC — 20 units of Item A, due 15 September, order number SO-1042"],
+        ["create_purchase_order", "A future commitment to buy.", "Create a purchase order to ABC Supplies for 50 units of Item B, due 10 September, order number PO-330"],
+        ["create_sales_quotation", "A pre-order price quote — one step before a firm Sales Order.", "Send a quotation to a prospective customer for 15 units of Item A at AED 120 each"],
+        ["create_job_work_in_order", "We're the job worker — booking an order to process raw materials a customer will supply.", "Book a job work order from Customer LLC — we'll produce 100 units of Item X from materials they'll supply, due 20 September"],
+        ["create_job_work_out_order", "We're the principal — sending raw materials out to a job worker, expecting a finished item back.", "Create a job work out order — send 200kg of Raw Material A to Job Worker LLC, expect 180 units of Finished Item back by 25 September"]
+      ]
+    },
+    {
+      title: "Masters & setup",
+      id: "masters",
+      note: "The building blocks everything else references — ledgers, stock items, units, godowns, and more.",
+      tools: [
+        ["create_ledger", "A new account — customer, supplier, expense, bank, etc.", "Create a ledger called 'XYZ LLC' under Sundry Debtors"],
+        ["delete_master", "Deletes one or more ledgers, groups, stock items, or other masters by name.", "Delete the ledger 'Test Customer' — it's not needed anymore"],
+        ["create_group", "A new account group, or renames/reparents an existing one.", "Create a group called 'Staff Loans' under Current Assets"],
+        ["create_stock_group", "A new category stock items get filed under.", "Create a stock group called 'Electronics' under Primary"],
+        ["create_unit", "A new unit of measure, simple or compound (e.g. a Box of 12).", "Create a unit called 'Box' that's a compound of 12 Nos"],
+        ["create_godown", "A new warehouse/location.", "Create a godown called 'Sharjah Warehouse'"],
+        ["create_cost_category", "A new grouping of cost centres (e.g. Branch, Project).", "Create a cost category called 'Projects'"],
+        ["create_cost_centre", "A new cost centre for tagging entries (department, branch, project).", "Create a cost centre called 'Marketing' under the Projects category"],
+        ["create_voucher_type", "A custom voucher type derived from a base type, e.g. its own numbering series.", "Create a voucher type called 'Bank Payment' based on Payment"],
+        ["create_stock_item", "A new stock item.", "Create a stock item called 'Widget A' under Electronics, unit Nos"],
+        ["update_stock_item", "Updates an existing stock item's group, unit, VAT rate, or other fields.", "Update Widget A's VAT rate to 5%"],
+        ["delete_stock_item", "Deletes a stock item (fails if it has transactions).", "Delete the stock item 'Old Widget' — we don't stock it anymore"],
+        ["set_bill_of_materials", "Attaches a recipe to a finished item, so a production run's components can be worked out by ratio.", "Set up a bill of materials for Finished Product X — it needs 2 units of Raw Material A and 1 of Raw Material B per unit produced"]
+      ]
+    },
+    {
+      title: "Company & session control",
+      id: "session",
+      note: "Not accounting entries — controlling which company/period Claude is looking at, and checking the connector itself.",
+      tools: [
+        ["set_company", "Switches which Tally company subsequent calls operate on.", "Switch to the company 'ABC Trading LLC'"],
+        ["set_period", "Switches Tally's active reporting period.", "Set the reporting period to the full 2024 financial year"],
+        ["get_health_check", "Confirms Tally is reachable, which company is open, and whether read-only mode is on.", "Run a health check — is everything connected properly?"],
+        ["get_audit_log", "Reviews every tool call made through this connector, with outcome and (best-effort) company tag.", "Show me every write made through this connector in the last week"]
+      ]
+    },
+    {
+      title: "SQL cache for analysis",
+      id: "sql",
+      note: "Pull data once, then ask follow-up questions against it without re-fetching from Tally each time — this is also how movement, godown-wise stock, and batch/ageing analysis get answered, since Tally has no built-in report for those.",
+      tools: [
+        ["sync_to_sql", "Loads ledgers, groups, and stock items into an in-memory cache for this session.", "Sync ledgers and stock items into the SQL cache"],
+        ["sync_vouchers_to_sql", "Loads voucher headers for a date range into the cache.", "Sync all vouchers from January to March 2024 into the cache"],
+        ["sync_voucher_items_to_sql", "Loads voucher inventory line items (item, qty, rate, godown, batch) for a date range into the cache.", "Sync the stock movement for 2024 into the cache, then tell me which godown holds the most stock"],
+        ["query_sql", "Runs a read-only SQL query against whatever's been synced.", "Which 10 customers owe us the most, based on what's synced?"]
+      ]
+    }
+  ];
+
+  const dotColor = { report: "var(--dot-report)", write: "var(--dot-write)", admin: "var(--dot-admin)" };
+  const catKind = { reports: "report", accounting: "write", inventory: "write", orders: "write", masters: "write", session: "admin", sql: "admin" };
+
+  const main = document.getElementById("main");
+  const tocList = document.getElementById("tocList");
+
+  DATA.forEach(cat => {
+    const kind = catKind[cat.id];
+    const a = document.createElement("a");
+    a.href = "#" + cat.id;
+    a.innerHTML = `<span>${cat.title}</span><span class="count">${cat.tools.length}</span>`;
+    tocList.appendChild(a);
+
+    const section = document.createElement("section");
+    section.className = "category";
+    section.id = cat.id;
+
+    const head = document.createElement("div");
+    head.className = "cat-head";
+    head.innerHTML = `<h2>${cat.title}</h2><span class="cat-count mono">${cat.tools.length} tools</span>`;
+    section.appendChild(head);
+
+    const note = document.createElement("p");
+    note.className = "cat-note";
+    note.textContent = cat.note;
+    section.appendChild(note);
+
+    const cards = document.createElement("div");
+    cards.className = "cards";
+
+    cat.tools.forEach(([name, desc, prompt]) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.tabIndex = 0;
+      card.innerHTML = `
+        <div class="card-head">
+          <span class="dot" style="background:${dotColor[kind]}"></span>
+          <span class="tool-name">${name}</span>
+        </div>
+        <p class="desc">${desc}</p>
+        <div class="prompt"><span class="say">Try saying</span>&#8220;${prompt}&#8221;</div>
+      `;
+      cards.appendChild(card);
+    });
+
+    section.appendChild(cards);
+    main.appendChild(section);
+  });
+</script>
+
+</body>
+</html>
