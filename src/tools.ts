@@ -117,6 +117,148 @@ export const tools = [
     },
   },
   {
+    name: "get_cash_flow",
+    description:
+      "Get the Cash Flow statement from TallyPrime for a date range — Tally's own canned report, reachable " +
+      "directly via a plain Export Data request (confirmed live, unlike the VAT/GST return reports). Returns " +
+      "Tally's native monthly-period breakdown shape (DSPPERIOD/DSPACCINFO arrays) as-is.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_funds_flow",
+    description:
+      "Get the Funds Flow statement from TallyPrime for a date range — Tally's own canned report, reachable " +
+      "directly via a plain Export Data request. Returns Tally's native monthly-period breakdown shape as-is.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_ratio_analysis",
+    description:
+      "Get the Ratio Analysis report from TallyPrime for a date range (Working Capital, Current Ratio, Quick " +
+      "Ratio, Inventory Turnover, Debtors/Creditors Turnover, and similar standard ratios) — Tally's own canned " +
+      "report, reachable directly via a plain Export Data request. Returns Tally's native RATIONAME/value array " +
+      "shape as-is.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_sales_register",
+    description:
+      "Get the Sales Register from TallyPrime for a date range — a month-by-month summary of Sales voucher " +
+      "activity, Tally's own canned report reachable directly via a plain Export Data request. For individual " +
+      "Sales voucher line detail (not just monthly totals), use get_vouchers or get_ledger_vouchers instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_purchase_register",
+    description:
+      "Get the Purchase Register from TallyPrime for a date range — a month-by-month summary of Purchase " +
+      "voucher activity, same design as get_sales_register.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_journal_register",
+    description:
+      "Get the Journal Register from TallyPrime for a date range — a month-by-month summary of Journal voucher " +
+      "activity, same design as get_sales_register.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_payment_register",
+    description:
+      "Get the Payment Register from TallyPrime for a date range — a month-by-month summary of Payment voucher " +
+      "activity, same design as get_sales_register. For Receipt vouchers specifically, use " +
+      "get_receipts_and_payments instead — Tally has no separate standalone 'Receipt Register' report reachable " +
+      "this way (confirmed live: 'Could not find Report').",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_receipts_and_payments",
+    description:
+      "Get the Receipts and Payments report from TallyPrime for a date range — a cash/bank-ledger-wise view " +
+      "combining Receipt and Payment activity, Tally's own canned report. This is the closest reachable " +
+      "equivalent to a standalone Cash Book/Bank Book — Tally's actual 'Cash Book'/'Bank Book' menu reports are " +
+      "not reachable via a plain Export Data request (confirmed live: 'Could not find Report'), even though " +
+      "they're registered report names — for a single cash or bank ledger's own transaction history instead, " +
+      "use get_ledger_vouchers with that ledger's name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_reorder_status",
+    description:
+      "Get the Reorder Status report from TallyPrime for a date range — stock items with a reorder level " +
+      "configured, and where their current quantity stands against it (closingStock, onPurchaseOrder, " +
+      "onSaleOrder, reorderLevel, shortfall, minimumQty, requiredQty per row). Tally's own report returns every " +
+      "stock item regardless of reorder setup (confirmed live: a 10,770-item company with no reorder levels " +
+      "configured returned a ~1.4MB all-null dump) — this tool filters that down to only rows that actually have " +
+      "a reorder level set, since that's the only subset the report can say anything useful about. An empty " +
+      "rows array with a note means no items have a reorder level configured at all, not an error — use " +
+      "get_stock_summary for a plain quantity view of every item regardless of reorder setup.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
     name: "get_vat_liability_summary",
     description:
       "Get a UAE VAT liability summary for a date range. Each row is a VAT ledger with its closing balance for " +
@@ -133,29 +275,6 @@ export const tools = [
       "plain Export Data request) — reconstructed from ledger balances the same way get_profit_and_loss is. If " +
       "no matching ledgers exist, returns an explicit note instead of a bare zero — a company with no VAT " +
       "ledgers (not registered, or unrecognizable naming) is a different fact from a real zero liability period.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        from: { type: "string", description: "Start date, DD-MM-YYYY" },
-        to: { type: "string", description: "End date, DD-MM-YYYY" },
-      },
-      required: ["from", "to"],
-    },
-  },
-  {
-    name: "get_vat_return_box_summary",
-    description:
-      "Trace UAE VAT 201 return boxes for a date range, built from the same ledger rows as " +
-      "get_vat_liability_summary — not a new data source, just that data regrouped into the return's box " +
-      "structure. Returns box1 (standard-rated supplies output VAT, combined across emirates), box3 (reverse " +
-      "charge output VAT), box9 (standard-rated expenses input VAT), box10 (reverse charge input VAT), and " +
-      "box11 (net VAT due = box1+box3 minus box9+box10). Also returns sourceRows (the underlying ledgers, so " +
-      "you can see exactly what fed each box) and boxesNotCovered — an explicit list of real Form 201 boxes " +
-      "(the emirate-wise split of box1, tourist refunds, zero-rated supplies, exempt supplies, goods imported) " +
-      "that ledger closing balances genuinely cannot answer, because they need voucher-level place-of-supply or " +
-      "rate data that isn't in a ledger balance at all — these are listed rather than silently omitted or " +
-      "guessed at. Use this to sanity-check a return before filing, not as a replacement for Tally's own VAT " +
-      "Return report.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2685,6 +2804,103 @@ export async function handleTool(
       return JSON.stringify(cleanTallyResult(result), null, 2);
     }
 
+    case "get_cash_flow": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Cash Flow", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_funds_flow": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Funds Flow", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_ratio_analysis": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Ratio Analysis", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_sales_register": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Sales Register", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_purchase_register": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Purchase Register", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_journal_register": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Journal Register", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_payment_register": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Payment Register", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_receipts_and_payments": {
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Receipts and Payments", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_reorder_status": {
+      // Tally returns every stock item here, not just reorder-configured
+      // ones — confirmed live on a 10,770-item company with zero reorder
+      // levels set up: the raw response was a ~1.4MB dump of all-null rows.
+      // Tally itself doesn't filter server-side, so this does it client-side
+      // to only the rows that actually have a reorder level configured
+      // (ROSORDLVL non-null) — that's the only subset this report can
+      // usefully answer anything about.
+      const { from, to } = args as { from: string; to: string };
+      const xml = reportXml("Reorder Status", { SVFROMDATE: from, SVTODATE: to });
+      const result = await tallyRequest(xml);
+      const cleaned = cleanTallyResult(result) as any;
+      const e = cleaned?.ENVELOPE;
+      if (e && Array.isArray(e.ROSNAME) && Array.isArray(e.ROSORDLVL)) {
+        const rows = e.ROSNAME.map((name: string, i: number) => ({
+          stockItem: name,
+          closingStock: e.ROSCLSTOCK?.[i] ?? null,
+          onPurchaseOrder: e.ROSONPURCORDER?.[i] ?? null,
+          onSaleOrder: e.ROSONSALEORDER?.[i] ?? null,
+          reorderLevel: e.ROSORDLVL?.[i] ?? null,
+          shortfall: e.ROSSHORTFALL?.[i] ?? null,
+          minimumQty: e.ROSMINQTY?.[i] ?? null,
+          requiredQty: e.ROSREQDQTY?.[i] ?? null,
+        })).filter((r: any) => r.reorderLevel !== null);
+        return JSON.stringify(
+          {
+            rows,
+            note:
+              rows.length === 0
+                ? "No stock items have a reorder level configured in Tally for this company — this is a " +
+                  "genuinely empty result, not an error. Set a reorder level on a stock item in Tally " +
+                  "(Alter Stock Item → Reorder Level) for it to appear here."
+                : undefined,
+          },
+          null,
+          2
+        );
+      }
+      return JSON.stringify(cleaned, null, 2);
+    }
+
     case "get_vat_liability_summary": {
       // Input/Output can appear before or after the tax name (confirmed
       // live: "Input VAT 5%" and, on another real company, "VAT INPUT"
@@ -2717,94 +2933,6 @@ export async function handleTool(
         // Caching is a convenience layer — never let it block returning the actual result.
       }
       return JSON.stringify({ rows: result.rows, netTotal: result.netTotal }, null, 2);
-    }
-
-    case "get_vat_return_box_summary": {
-      // Reuses the exact same ledger query/classification as
-      // get_vat_liability_summary — this isn't a new data source, it's the
-      // same verified rows regrouped into Form 201's box structure. Only
-      // boxes that are actually derivable from ledger closing balances are
-      // filled in; boxes that need voucher-level detail (emirate-wise
-      // sales split, zero-rated/exempt classification, goods imported) are
-      // explicitly listed as not covered rather than silently omitted or
-      // guessed at.
-      const namePatterns = [
-        /\binput\b.*vat|vat.*\binput\b/i,
-        /\boutput\b.*vat|vat.*\boutput\b/i,
-        /vat\s*payable/i,
-        /vat\s*receivable/i,
-        /vat.*reverse\s*charge|reverse\s*charge.*vat/i,
-      ];
-      const result = await buildTaxLiabilitySummary(args as { from: string; to: string }, "VAT", namePatterns);
-      if (result.rows.length === 0) {
-        return JSON.stringify(
-          {
-            boxes: null,
-            note:
-              "No VAT ledgers found (same check as get_vat_liability_summary) — this likely means this company " +
-              "isn't VAT-registered in Tally, or uses an unrecognizable naming convention. Run " +
-              "get_vat_liability_summary first to see the underlying ledger rows.",
-          },
-          null,
-          2
-        );
-      }
-
-      const sum = (pred: (r: TaxLedgerRow) => boolean) =>
-        result.rows.filter(pred).reduce((s, r) => s + (r.closingBalance || 0), 0);
-
-      const box1_standard_rated_supplies_output_vat = sum((r) => r.category === "output");
-      const box3_reverse_charge_output_vat = sum((r) => r.category === "rcm" && /\boutput\b/i.test(r.ledgerName));
-      const box9_standard_rated_expenses_input_vat = sum((r) => r.category === "input");
-      const box10_reverse_charge_input_vat = sum((r) => r.category === "rcm" && /\binput\b/i.test(r.ledgerName));
-      const rcmUnclassified = result.rows.filter(
-        (r) => r.category === "rcm" && !/\binput\b/i.test(r.ledgerName) && !/\boutput\b/i.test(r.ledgerName)
-      );
-
-      const boxes = {
-        box1_standard_rated_supplies_output_vat,
-        box3_reverse_charge_output_vat,
-        box9_standard_rated_expenses_input_vat,
-        box10_reverse_charge_input_vat,
-        box11_net_vat_due:
-          box1_standard_rated_supplies_output_vat +
-          box3_reverse_charge_output_vat -
-          (box9_standard_rated_expenses_input_vat + box10_reverse_charge_input_vat),
-      };
-
-      return JSON.stringify(
-        {
-          boxes,
-          sourceRows: result.rows,
-          unclassifiedRcmLedgers:
-            rcmUnclassified.length > 0
-              ? rcmUnclassified.map((r) => r.ledgerName).concat(
-                  "These matched an RCM name pattern but neither 'input' nor 'output', so they aren't in " +
-                    "box3/box10 above — check them manually and add to the relevant box."
-                )
-              : undefined,
-          boxesNotCovered: {
-            "box1a_to_1g_emirate_split":
-              "Box 1 above is the combined total across all emirates. Tally's ledger balances don't carry " +
-              "place-of-supply, so the emirate-wise split (Abu Dhabi/Dubai/Sharjah/Ajman/UAQ/RAK/Fujairah) " +
-              "needs the Sales register or voucher-level data, not this tool.",
-            box2_tourist_refund_scheme: "Not derivable from ledger balances — check the Tourist Refund Scheme report directly if applicable.",
-            box4_zero_rated_supplies:
-              "Zero-rated sales carry no VAT ledger entry to trace, so they can't be picked up from tax-ledger " +
-              "balances at all — check the Sales register for supplies invoiced at 0%.",
-            box5_exempt_supplies: "Same limitation as zero-rated — exempt supplies carry no VAT ledger trace.",
-            box6_7_goods_imported_and_adjustments:
-              "Not reliably separable from other RCM entries by ledger name alone — check import/customs " +
-              "declarations and any dedicated 'Import VAT' ledger directly.",
-          },
-          note:
-            "This is a ledger-balance trace of the VAT 201 boxes we can actually compute from Tally data, not a " +
-            "substitute for the return itself — cross-check totals here against Tally's own VAT Return report " +
-            "and the boxes listed in boxesNotCovered before filing.",
-        },
-        null,
-        2
-      );
     }
 
     case "get_gst_liability_summary": {

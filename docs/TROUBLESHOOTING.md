@@ -254,6 +254,40 @@ first when debugging "is this even the right port" instead of a raw
 `get_company_info` call, whose failure mode here would be a confusing
 JSON-parse-of-garbage result rather than a clear answer.
 
+## Report names that don't work via a plain Export Data request
+
+Not every report visible in Tally's UI is reachable this way, and some
+outright unreachable ones are worse than a clean error — they hang Tally's
+whole gateway (confirmed live, twice) until the resulting error dialog is
+manually dismissed *inside Tally's own window*, not just at the HTTP layer.
+If you're exploring a new report name, check it against Tally's own
+`Collection TYPE=Report` introspection query first (lists every registered
+report name) rather than guessing strings — a name that isn't in that list
+at all is far more likely to hang than one that is but still isn't
+independently invokable.
+
+Confirmed **unreachable, but fails cleanly** (a normal "Could not find
+Report" error, not a hang): `Cash Book`, `Bank Book`, `Cash Books`,
+`Bank Books` (plural — registered in Tally's Report collection, but not
+independently invokable this way), `Batch Godown Summary`,
+`Location-Wise Summary`, `Stock Item Monthly Details`, `Movement Analysis`,
+`Stock Ageing Analysis`, `Ageing Analysis`, `Receipt Register`,
+`Job Work Order Details`, `Job Work Registers`, `Job Work Stock`,
+`Order Vouchers`, `Order Details`. `get_receipts_and_payments` and
+`get_ledger_vouchers` are the closest reachable substitutes for the
+Cash/Bank Book pair — see their tool descriptions.
+
+Confirmed **unreachable and hangs the gateway** (needs the resulting Tally
+dialog dismissed manually before the connector responds again):
+`Stock Ageing`, `Age wise`, `Godowns Summary`, `Location Summary`,
+`Receipt & Payment` (singular). Avoid retrying any of these.
+
+`Movement Analysis`, `Stock Ageing Analysis`, `Godown Summary`, and
+`Stock Query` genuinely aren't reachable as standalone reports at all —
+building them would need collection-based reconstruction (the same
+technique `get_stock_summary` and the VAT/GST tools use), not a report
+name, and hasn't been attempted yet.
+
 ## Verified-live tools
 
 `set_bill_of_materials`, `create_material_in`, `create_material_out`,

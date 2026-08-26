@@ -22,9 +22,7 @@ it for a range you already synced just refreshes that range.
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
 `get_trial_balance`, `get_vat_liability_summary`, and
-`get_gst_liability_summary` all cache themselves automatically (`get_vat_return_box_summary`
-reuses `vat_summary`'s cache rather than writing its own — it's the same rows regrouped, not a
-new query), with no
+`get_gst_liability_summary` all cache themselves automatically, with no
 sync step at all — calling any one of them refreshes its table with that
 call's result, so a follow-up question about the same report can query it
 via SQL instead of re-fetching from Tally and re-dumping the full report

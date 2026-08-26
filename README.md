@@ -100,7 +100,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (56 total)
+## Available tools (64 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -123,8 +123,16 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `get_stock_summary` | `asOf` | Stock Summary as of a date |
 | `get_bills_receivable` | `asOf` | Outstanding Bills Receivable |
 | `get_bills_payable` | `asOf` | Outstanding Bills Payable |
+| `get_cash_flow` | `from`, `to` | Cash Flow statement — Tally's own canned report |
+| `get_funds_flow` | `from`, `to` | Funds Flow statement — Tally's own canned report |
+| `get_ratio_analysis` | `from`, `to` | Standard ratios (Current Ratio, Quick Ratio, Inventory/Debtors/Creditors Turnover, etc.) — Tally's own canned report |
+| `get_sales_register` | `from`, `to` | Month-by-month Sales voucher summary — Tally's own canned report |
+| `get_purchase_register` | `from`, `to` | Month-by-month Purchase voucher summary — Tally's own canned report |
+| `get_journal_register` | `from`, `to` | Month-by-month Journal voucher summary — Tally's own canned report |
+| `get_payment_register` | `from`, `to` | Month-by-month Payment voucher summary — Tally's own canned report |
+| `get_receipts_and_payments` | `from`, `to` | Combined cash/bank Receipts and Payments view — the closest reachable equivalent to Cash Book/Bank Book, which aren't reachable as standalone reports |
+| `get_reorder_status` | `from`, `to` | Stock items that actually have a reorder level configured, and how their quantity stands against it — filtered down from Tally's own report, which returns every item regardless (confirmed live on a 10,770-item company) |
 | `get_vat_liability_summary` | `from`, `to` | UAE VAT liability for a period — Input/Output/RCM/other VAT ledgers found via Tally's own tax-type field or name pattern (whichever actually catches this company's real ledgers), plus a net total |
-| `get_vat_return_box_summary` | `from`, `to` | UAE VAT 201 return boxes for a period, traced from the same ledgers as `get_vat_liability_summary` — plus an explicit list of the real boxes (emirate-wise sales split, zero-rated, exempt, imports) that ledger balances can't answer |
 | `get_gst_liability_summary` | `from`, `to` | India GST liability for a period — same hybrid approach as VAT, for CGST/SGST/IGST input/output/payable/receivable/RCM ledgers |
 
 ### Write — vouchers
