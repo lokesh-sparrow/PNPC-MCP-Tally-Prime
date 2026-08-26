@@ -122,6 +122,15 @@
     color: var(--accent-deep);
     margin: 0 0 14px;
   }
+  .masthead .eyebrow a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    text-underline-offset: 3px;
+  }
+  .masthead .eyebrow a:hover {
+    text-decoration-color: var(--accent-deep);
+  }
   .masthead h1 {
     font-size: clamp(28px, 4vw, 40px);
     font-weight: 600;
@@ -340,7 +349,7 @@
 
 <div class="layout">
   <header class="masthead">
-    <p class="eyebrow">PNPC-MCP-Tally-Prime · Claude Desktop chat</p>
+    <p class="eyebrow"><a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme">PNPC-MCP-Tally-Prime</a> · Claude Desktop chat</p>
     <h1>The Tally Connector Playbook</h1>
     <p class="lede">
       Every one of the 72 tools this connector gives Claude, with a plain-English

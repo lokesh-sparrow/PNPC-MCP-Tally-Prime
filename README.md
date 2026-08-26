@@ -12,7 +12,9 @@
 </p>
 
 > Built and maintained by **PNPC Global**. Public so anyone can use or
-> self-host it for their own TallyPrime setup.
+> self-host it for their own TallyPrime setup. New here? The
+> **[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html)**
+> shows what to actually type in chat, before you get to the full reference below.
 
 ## Prerequisites
 
