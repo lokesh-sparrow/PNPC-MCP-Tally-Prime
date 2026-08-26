@@ -54,9 +54,9 @@ wipes and replaces the table, it doesn't add to it.
 
 `balance_sheet` and `trial_balance` come from genuinely different Tally
 export shapes than `profit_and_loss`/`stock_summary` — Tally's own report
-XML uses bespoke, per-report field names with no shared schema (confirmed
-live: Balance Sheet returns `BSNAME`/`BSAMT` parallel arrays, Trial Balance
-returns `DSPACCNAME`/`DSPACCINFO`). Each report gets its own parser in
+XML uses bespoke, per-report field names with no shared schema — Balance
+Sheet returns `BSNAME`/`BSAMT` parallel arrays, Trial Balance returns
+`DSPACCNAME`/`DSPACCINFO`. Each report gets its own parser in
 `src/db.ts`/`src/tools.ts`, not one generic flattener — a real design
 constraint discovered by inspecting live data, not a stylistic choice.
 
@@ -69,8 +69,8 @@ rather than being folded into `input`/`output`, since RCM liability is the thing
 missed manually even though it nets to a wash for most businesses. `match_method` records
 *how* each row was found — `structural` (Tally's own `TAXTYPE` ledger
 field matches) or `name_pattern` (matched by ledger name). This isn't
-redundant belt-and-braces: confirmed live on two real companies that
-`TAXTYPE` alone is precise but has near-zero recall — every ledger Tally
+redundant belt-and-braces: on two real companies, `TAXTYPE` alone was
+precise but had near-zero recall — every ledger Tally
 itself tagged had a zero balance, while every ledger actually carrying real
 money was created without that tag set. Relying on `TAXTYPE` alone would
 return a structurally correct but financially empty result, so both

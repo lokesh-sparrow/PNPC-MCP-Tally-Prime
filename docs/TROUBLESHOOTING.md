@@ -132,7 +132,7 @@ of the counted quantity (e.g. counting 95 against a book balance of 102
 produced a closing balance of `-100`, not `95`). Rebuilt against a genuine
 Tally-exported XML template (`DIFFACTUALQTY=Yes` at the voucher level,
 `ISDEEMEDPOSITIVE=Yes`, no `RATE`/`AMOUNT`/`BILLEDQTY` at all) and
-re-verified: counting 95 of an item with 100 in stock now correctly
+re-verified: counting 95 of an item with 100 in stock now
 closes it at 95. If a stock item's balance looks wrong after a physical
 count made with an older version, recheck it and correct with a fresh
 `create_physical_stock` call or manually in Tally.
@@ -226,7 +226,7 @@ around the refusal.
   and reopen Claude Desktop.** Saving the settings screen is
   not enough — verified by making a write call immediately after toggling
   read-only mode on (it succeeded, unblocked) versus after a full restart
-  (it was correctly denied). This connector reads its config once at
+  (it was denied). This connector reads its config once at
   process startup; there's no live-reload mechanism.
 - A logging failure (disk full, permissions) never blocks the underlying
   Tally operation — it's swallowed silently rather than surfaced, by design.
@@ -260,7 +260,7 @@ JSON-parse-of-garbage result rather than a clear answer.
 `create_rejections_in`, and `create_rejections_out` were originally built
 from real Tally-exported XML templates or by direct analogy to other
 proven-safe voucher shapes, and have since been live-verified: each
-correctly moves stock by the expected quantity, and `create_material_in`/
+moves stock by the expected quantity, and `create_material_in`/
 `create_material_out`'s party-ledger amount is confirmed to genuinely not
 balance against the inventory legs (job-work memorandum tracking, not a
 real Dr/Cr pair) — don't mistake this for a bug if the numbers don't net to
