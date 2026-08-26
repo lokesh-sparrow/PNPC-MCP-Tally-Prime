@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
@@ -63,6 +63,9 @@
     { "name": "get_stock_summary", "description": "Get the Stock Summary report from TallyPrime as of a given date" },
     { "name": "get_bills_receivable", "description": "Get outstanding Bills Receivable from TallyPrime as of a given date" },
     { "name": "get_bills_payable", "description": "Get outstanding Bills Payable from TallyPrime as of a given date" },
+    { "name": "get_vat_liability_summary", "description": "Get a UAE VAT liability summary for a date range from TallyPrime" },
+    { "name": "get_vat_return_box_summary", "description": "Trace UAE VAT 201 return boxes for a date range from TallyPrime" },
+    { "name": "get_gst_liability_summary", "description": "Get an India GST liability summary for a date range from TallyPrime" },
     { "name": "get_ledger_vouchers", "description": "Get all voucher entries posted to a specific ledger within a date range" },
     { "name": "create_ledger", "description": "Create a new ledger in TallyPrime, or rename/update an existing one by passing oldName" },
     { "name": "delete_master", "description": "Delete one or more masters (ledger, group, stock item, voucher type, unit, godown, cost centre, etc.) from TallyPrime by name" },

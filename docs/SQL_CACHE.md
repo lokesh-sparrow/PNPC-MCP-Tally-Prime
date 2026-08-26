@@ -20,11 +20,15 @@ it for a range you already synced just refreshes that range.
 
 `query_sql` then runs an arbitrary read-only `SELECT` against that cache.
 
-`get_profit_and_loss` and `get_stock_summary` cache themselves
-automatically, with no sync step at all — calling either one refreshes its
-table with that call's result, so a follow-up question about the same
-report can query it via SQL instead of re-fetching from Tally and re-dumping
-the full report into context a second time.
+`get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
+`get_trial_balance`, `get_vat_liability_summary`, and
+`get_gst_liability_summary` all cache themselves automatically (`get_vat_return_box_summary`
+reuses `vat_summary`'s cache rather than writing its own — it's the same rows regrouped, not a
+new query), with no
+sync step at all — calling any one of them refreshes its table with that
+call's result, so a follow-up question about the same report can query it
+via SQL instead of re-fetching from Tally and re-dumping the full report
+into context a second time.
 
 ## Tables
 
@@ -36,13 +40,41 @@ the full report into context a second time.
 | `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` | `sync_vouchers_to_sql` (explicit) |
 | `profit_and_loss` | `ledger_name`, `group_name`, `closing_balance`, `period_from`, `period_to` | `get_profit_and_loss` (automatic) |
 | `stock_summary` | `name`, `parent`, `opening_qty`, `closing_qty`, `opening_value`, `closing_value`, `as_of_date` | `get_stock_summary` (automatic) |
+| `balance_sheet` | `group_name`, `amount`, `as_of_date` | `get_balance_sheet` (automatic) |
+| `trial_balance` | `name`, `debit_amount`, `credit_amount`, `period_from`, `period_to` | `get_trial_balance` (automatic) |
+| `vat_summary` | `ledger_name`, `category`, `match_method`, `closing_balance`, `period_from`, `period_to` | `get_vat_liability_summary` (automatic) |
+| `gst_summary` | same shape as `vat_summary` | `get_gst_liability_summary` (automatic) |
 
 `vouchers` is only populated for date ranges you've explicitly pulled via
-`sync_vouchers_to_sql` — it starts empty every session. `profit_and_loss`
-and `stock_summary` are whole-table replaced on every call to their
-respective report tool — each holds only the **most recent** call's result,
-not an accumulating history. Calling `get_profit_and_loss` for a different
-period wipes and replaces the table, it doesn't add to it.
+`sync_vouchers_to_sql` — it starts empty every session. The six automatic
+tables are whole-table replaced on every call to their respective report
+tool — each holds only the **most recent** call's result, not an
+accumulating history. Calling `get_profit_and_loss` for a different period
+wipes and replaces the table, it doesn't add to it.
+
+`balance_sheet` and `trial_balance` come from genuinely different Tally
+export shapes than `profit_and_loss`/`stock_summary` — Tally's own report
+XML uses bespoke, per-report field names with no shared schema (confirmed
+live: Balance Sheet returns `BSNAME`/`BSAMT` parallel arrays, Trial Balance
+returns `DSPACCNAME`/`DSPACCINFO`). Each report gets its own parser in
+`src/db.ts`/`src/tools.ts`, not one generic flattener — a real design
+constraint discovered by inspecting live data, not a stylistic choice.
+
+`vat_summary`/`gst_summary` aren't from canned Tally reports at all —
+Tally's own UAE VAT return ("Vat Return and Annexures") and India GST
+returns aren't reachable via a plain Export Data request even with their
+exact internal names, so both are reconstructed from ledger balances
+instead, the same technique `profit_and_loss` uses. `category` is `input`/`output`/`rcm`/`other` — reverse-charge ledgers get their own `rcm` category
+rather than being folded into `input`/`output`, since RCM liability is the thing that's easily
+missed manually even though it nets to a wash for most businesses. `match_method` records
+*how* each row was found — `structural` (Tally's own `TAXTYPE` ledger
+field matches) or `name_pattern` (matched by ledger name). This isn't
+redundant belt-and-braces: confirmed live on two real companies that
+`TAXTYPE` alone is precise but has near-zero recall — every ledger Tally
+itself tagged had a zero balance, while every ledger actually carrying real
+money was created without that tag set. Relying on `TAXTYPE` alone would
+return a structurally correct but financially empty result, so both
+signals are combined and neither is skipped.
 
 ## Example
 
@@ -54,13 +86,16 @@ query_sql: SELECT voucher_type, COUNT(*), SUM(amount) FROM vouchers
            GROUP BY voucher_type ORDER BY 2 DESC
 ```
 
-For `profit_and_loss`/`stock_summary`, no sync call is needed — just call
-the report tool once, then query it:
+For the six automatic tables, no sync call is needed — just call the
+report tool once, then query it:
 
 ```
 get_profit_and_loss: from=01-01-2024 to=31-12-2024
 query_sql: SELECT group_name, SUM(closing_balance) FROM profit_and_loss
            GROUP BY group_name ORDER BY 2 DESC
+
+get_trial_balance: from=01-01-2024 to=31-12-2024
+query_sql: SELECT SUM(debit_amount), SUM(credit_amount) FROM trial_balance
 ```
 
 ## Limitations
@@ -73,9 +108,9 @@ query_sql: SELECT group_name, SUM(closing_balance) FROM profit_and_loss
   cache across restarts (or across a company switch within one session)
   would risk silently mixing one client's numbers with another's. Re-sync
   after switching companies, and before answering any report that needs
-  up-to-the-minute figures. `profit_and_loss`/`stock_summary` carry the same
+  up-to-the-minute figures. The six automatic tables carry the same
   caveat — re-call the report tool after switching companies before
-  querying either one.
+  querying it.
 - **Vouchers only carry header-level detail.** No stock item or ledger line
   breakdown is cached — use `get_vouchers` / `get_ledger_vouchers` for that.
 - **Read-only.** `query_sql` rejects anything that isn't a single `SELECT`

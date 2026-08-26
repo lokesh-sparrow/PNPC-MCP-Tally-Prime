@@ -79,6 +79,34 @@ async function ensureSchema(): Promise<void> {
         closing_value NUMERIC,
         as_of_date DATE
       );
+      CREATE TABLE IF NOT EXISTS balance_sheet (
+        group_name TEXT,
+        amount NUMERIC,
+        as_of_date DATE
+      );
+      CREATE TABLE IF NOT EXISTS trial_balance (
+        name TEXT,
+        debit_amount NUMERIC,
+        credit_amount NUMERIC,
+        period_from DATE,
+        period_to DATE
+      );
+      CREATE TABLE IF NOT EXISTS vat_summary (
+        ledger_name TEXT,
+        category TEXT,
+        match_method TEXT,
+        closing_balance NUMERIC,
+        period_from DATE,
+        period_to DATE
+      );
+      CREATE TABLE IF NOT EXISTS gst_summary (
+        ledger_name TEXT,
+        category TEXT,
+        match_method TEXT,
+        closing_balance NUMERIC,
+        period_from DATE,
+        period_to DATE
+      );
     `).then(() => undefined);
   }
   await schemaReady;
@@ -261,7 +289,128 @@ export async function cacheStockSummary(
   }
 }
 
+// Balance Sheet's own export shape has no shared schema with any other Tally
+// report (confirmed live by inspecting real data) — two parallel top-level
+// arrays (BSNAME/BSAMT) matched only by index position, not key-value pairs.
+// Caller is responsible for having already zipped them into rows; this just
+// persists the result with the same whole-table-replace model as the other
+// auto-caches.
+export async function cacheBalanceSheet(
+  rows: { groupName: string | null; amount: number | null }[],
+  asOf: string
+): Promise<void> {
+  await ensureSchema();
+  const asOfIso = toIsoDate(asOf);
+  await db.exec("BEGIN");
+  try {
+    await db.exec("DELETE FROM balance_sheet");
+    for (const r of rows) {
+      await db.query(
+        "INSERT INTO balance_sheet (group_name, amount, as_of_date) VALUES ($1, $2, $3)",
+        [str(r.groupName), num(r.amount), asOfIso]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// Trial Balance's export shape is different again from Balance Sheet's
+// (DSPACCNAME/DSPACCINFO, not BSNAME/BSAMT) — kept as separate debit/credit
+// columns rather than one signed amount, since collapsing dual dr/cr columns
+// into a single sign convention risks being misread by whoever queries this.
+export async function cacheTrialBalance(
+  rows: { name: string | null; debitAmount: number | null; creditAmount: number | null }[],
+  from: string,
+  to: string
+): Promise<void> {
+  await ensureSchema();
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+  await db.exec("BEGIN");
+  try {
+    await db.exec("DELETE FROM trial_balance");
+    for (const r of rows) {
+      await db.query(
+        "INSERT INTO trial_balance (name, debit_amount, credit_amount, period_from, period_to) VALUES ($1, $2, $3, $4, $5)",
+        [str(r.name), num(r.debitAmount), num(r.creditAmount), fromIso, toIso]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// UAE VAT liability summary — hybrid classification (Tally's own TAXTYPE
+// field where it's actually set, plus a name-pattern fallback, since real
+// company files were confirmed live to have their highest-activity ledgers
+// created WITHOUT TAXTYPE set at all). Same whole-table-replace model as
+// the other auto-caches.
+export async function cacheVatSummary(
+  rows: { ledgerName: string; category: string; matchMethod: string; closingBalance: number }[],
+  from: string,
+  to: string
+): Promise<void> {
+  await ensureSchema();
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+  await db.exec("BEGIN");
+  try {
+    await db.exec("DELETE FROM vat_summary");
+    for (const r of rows) {
+      await db.query(
+        "INSERT INTO vat_summary (ledger_name, category, match_method, closing_balance, period_from, period_to) VALUES ($1, $2, $3, $4, $5, $6)",
+        [str(r.ledgerName), str(r.category), str(r.matchMethod), num(r.closingBalance), fromIso, toIso]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// Same hybrid classification and whole-table-replace model as
+// cacheVatSummary, for India GST.
+export async function cacheGstSummary(
+  rows: { ledgerName: string; category: string; matchMethod: string; closingBalance: number }[],
+  from: string,
+  to: string
+): Promise<void> {
+  await ensureSchema();
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+  await db.exec("BEGIN");
+  try {
+    await db.exec("DELETE FROM gst_summary");
+    for (const r of rows) {
+      await db.query(
+        "INSERT INTO gst_summary (ledger_name, category, match_method, closing_balance, period_from, period_to) VALUES ($1, $2, $3, $4, $5, $6)",
+        [str(r.ledgerName), str(r.category), str(r.matchMethod), num(r.closingBalance), fromIso, toIso]
+      );
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
 const DDL_KEYWORDS = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
+
+// Blanks out the contents of single-quoted string literals (Postgres uses ''
+// to escape a literal quote inside one) before the DDL_KEYWORDS check runs.
+// Confirmed live: without this, a perfectly safe SELECT ... WHERE name =
+// 'ZZTEST ITEM DELETE ME' was rejected as a write statement, because the
+// naive keyword check saw "DELETE" inside the quoted value, not just in
+// actual SQL syntax.
+function stripStringLiterals(sql: string): string {
+  return sql.replace(/'(?:[^']|'')*'/g, "''");
+}
 
 export async function runSql(sql: string): Promise<string> {
   await ensureSchema();
@@ -270,7 +419,7 @@ export async function runSql(sql: string): Promise<string> {
   if (!/^SELECT\b/i.test(trimmed)) {
     throw new Error("Only SELECT statements are allowed.");
   }
-  if (DDL_KEYWORDS.test(trimmed)) {
+  if (DDL_KEYWORDS.test(stripStringLiterals(trimmed))) {
     throw new Error("Only read-only SELECT statements are allowed.");
   }
 

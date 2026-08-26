@@ -254,22 +254,21 @@ first when debugging "is this even the right port" instead of a raw
 `get_company_info` call, whose failure mode here would be a confusing
 JSON-parse-of-garbage result rather than a clear answer.
 
-## Newer, lower-confidence tools
+## Verified-live tools with one remaining open question
 
 `set_bill_of_materials`, `create_material_in`, `create_material_out`,
-`create_rejections_in`, and `create_rejections_out` are all built from real
-Tally-exported XML templates or by direct analogy to other proven-safe
-voucher shapes in this project — but none of them have been verified against
-a real manually-created example the way `create_stock_journal`'s
-multi-source/destination shape and additional-cost allocation have been.
-Treat their output as a strong starting point, not a guarantee — check the
-resulting voucher/master in Tally's own UI after use, especially:
-- `set_bill_of_materials`'s `natureOfItem` accepted values.
-- `create_material_in`/`create_material_out`'s party-ledger amount, which
-  deliberately does **not** balance against the inventory legs (based on
-  the source template — this is job-work memorandum tracking, not a
-  real Dr/Cr pair) — don't mistake this for a bug if the numbers don't net
-  to zero the way a normal voucher would.
+`create_rejections_in`, and `create_rejections_out` were originally built
+from real Tally-exported XML templates or by direct analogy to other
+proven-safe voucher shapes, and have since been live-verified: each
+correctly moves stock by the expected quantity, and `create_material_in`/
+`create_material_out`'s party-ledger amount is confirmed to genuinely not
+balance against the inventory legs (job-work memorandum tracking, not a
+real Dr/Cr pair) — don't mistake this for a bug if the numbers don't net to
+zero the way a normal voucher would.
+
+One thing remains genuinely unverified: `set_bill_of_materials`'s
+`natureOfItem` accepted values — check the resulting BOM in Tally's own UI
+if you pass this field.
 
 **Job Work In/Out Order vouchers were deliberately not built** — no
 verified real-world XML example was found, and there's no existing

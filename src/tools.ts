@@ -1,7 +1,7 @@
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, syncVouchers, runSql, cacheProfitAndLoss, cacheStockSummary } from "./db.js";
+import { syncAll, syncVouchers, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
 
@@ -114,6 +114,78 @@ export const tools = [
         asOf: { type: "string", description: "As-of date in DD-MM-YYYY format" },
       },
       required: ["asOf"],
+    },
+  },
+  {
+    name: "get_vat_liability_summary",
+    description:
+      "Get a UAE VAT liability summary for a date range. Each row is a VAT ledger with its closing balance for " +
+      "the period, classified as input/output/rcm/other — 'rcm' (reverse charge) is kept separate from plain " +
+      "input/output because reverse-charge liability is the thing that's easily missed manually, even though it " +
+      "nets to a wash for most businesses — tagged with how it was found — 'structural' (Tally's own " +
+      "Type-of-duty/tax field is set to VAT on that ledger) or 'name_pattern' (matched Input/Output/Payable/" +
+      "Receivable VAT naming). Both signals are used together, not one alone — confirmed live on real company " +
+      "data that Tally's structural tag is precise but has near-zero recall: every properly-tagged ledger had a " +
+      "zero balance, while the ledgers actually carrying real money were created without that tag set at all. " +
+      "Not filtered by any particular parent group — real companies were confirmed to scatter these ledgers " +
+      "across many different groups, not one standard group. netTotal sums all rows using Tally's own debit/" +
+      "credit sign convention. Not Tally's canned VAT return report (confirmed live it isn't reachable via a " +
+      "plain Export Data request) — reconstructed from ledger balances the same way get_profit_and_loss is. If " +
+      "no matching ledgers exist, returns an explicit note instead of a bare zero — a company with no VAT " +
+      "ledgers (not registered, or unrecognizable naming) is a different fact from a real zero liability period.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_vat_return_box_summary",
+    description:
+      "Trace UAE VAT 201 return boxes for a date range, built from the same ledger rows as " +
+      "get_vat_liability_summary — not a new data source, just that data regrouped into the return's box " +
+      "structure. Returns box1 (standard-rated supplies output VAT, combined across emirates), box3 (reverse " +
+      "charge output VAT), box9 (standard-rated expenses input VAT), box10 (reverse charge input VAT), and " +
+      "box11 (net VAT due = box1+box3 minus box9+box10). Also returns sourceRows (the underlying ledgers, so " +
+      "you can see exactly what fed each box) and boxesNotCovered — an explicit list of real Form 201 boxes " +
+      "(the emirate-wise split of box1, tourist refunds, zero-rated supplies, exempt supplies, goods imported) " +
+      "that ledger closing balances genuinely cannot answer, because they need voucher-level place-of-supply or " +
+      "rate data that isn't in a ledger balance at all — these are listed rather than silently omitted or " +
+      "guessed at. Use this to sanity-check a return before filing, not as a replacement for Tally's own VAT " +
+      "Return report.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_gst_liability_summary",
+    description:
+      "Get an India GST liability summary for a date range. Same design as get_vat_liability_summary — each row " +
+      "is a GST ledger (CGST/SGST/IGST, input/output/payable/receivable/RCM) with its closing balance for the " +
+      "period, classified as input/output/rcm/other ('rcm' kept separate from input/output — reverse-charge " +
+      "liability is the thing that's easily missed manually), tagged 'structural' (Tally's Type-of-duty/tax field = GST) or " +
+      "'name_pattern' (matched Input/Output CGST/SGST/IGST or GST Payable/Receivable/RCM naming) — both signals " +
+      "used together for the same reason: confirmed live that Tally's structural tag alone misses every ledger " +
+      "with real activity in a real company file. Deliberately excludes generic expense ledgers that merely " +
+      "mention GST in their name (a freight ledger, a GST write-off/ineligible-ITC ledger) — those aren't tax " +
+      "liability lines and including them would misstate the position. netTotal sums all rows using Tally's own " +
+      "debit/credit sign convention. Not a canned GSTR export — reconstructed from ledger balances. If no " +
+      "matching ledgers exist, returns an explicit note instead of a bare zero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date, DD-MM-YYYY" },
+        to: { type: "string", description: "End date, DD-MM-YYYY" },
+      },
+      required: ["from", "to"],
     },
   },
   {
@@ -1434,13 +1506,16 @@ export const tools = [
       "Tables: ledgers(name, parent, closing_balance), groups(name, parent), stock_items(name, parent, " +
       "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration) — " +
       "all four populated only by explicitly calling sync_to_sql/sync_vouchers_to_sql first. " +
-      "profit_and_loss(ledger_name, group_name, closing_balance, period_from, period_to) and " +
-      "stock_summary(name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date) are " +
-      "populated automatically, no separate sync step — every get_profit_and_loss/get_stock_summary call " +
-      "refreshes them with that call's result, so a follow-up question about the same report can query it here " +
-      "instead of re-fetching from Tally. Each of these two only ever holds the most recent call's data, not a " +
-      "history — re-call the report tool if you need a different period. vouchers/profit_and_loss/stock_summary " +
-      "don't track which company they came from — re-sync/re-fetch after switching companies before querying.",
+      "profit_and_loss(ledger_name, group_name, closing_balance, period_from, period_to), " +
+      "stock_summary(name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date), " +
+      "balance_sheet(group_name, amount, as_of_date), trial_balance(name, debit_amount, credit_amount, " +
+      "period_from, period_to), and vat_summary(ledger_name, category, closing_balance, period_from, period_to) " +
+      "are populated automatically, no separate sync step — every get_profit_and_loss/get_stock_summary/" +
+      "get_balance_sheet/get_trial_balance/get_vat_liability_summary call refreshes its table with that call's " +
+      "result, so a follow-up question about the same report can query it here instead of re-fetching from " +
+      "Tally. Each of these five only ever holds the most recent call's data, not a history — re-call the " +
+      "report tool if you need a different period. None of the tables track which company they came from — " +
+      "re-sync/re-fetch after switching companies before querying.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1497,6 +1572,74 @@ export const tools = [
 
 function reportXml(reportName: string, staticVariables: Record<string, string>): string {
   return render("report.xml.njk", { reportName, staticVariables: Object.entries(staticVariables) });
+}
+
+type TaxLedgerRow = { ledgerName: string; category: "input" | "output" | "rcm" | "other"; matchMethod: "structural" | "name_pattern"; closingBalance: number };
+
+// Shared by get_vat_liability_summary and get_gst_liability_summary. Neither
+// tax return report is reachable via a plain Export Data request (confirmed
+// live for both VAT's "Vat Return and Annexures" and GST's canned reports),
+// so both are reconstructed from ledger balances instead, the same
+// technique get_profit_and_loss uses.
+//
+// Hybrid classification, not either signal alone — confirmed live on two
+// real companies that Tally's own $TaxType field (set via the proper GST/VAT
+// ledger-creation wizard) is precise but has near-zero recall: every
+// TaxType-tagged ledger in both test companies had a ZERO balance, while
+// every ledger actually carrying real money was created as a plain ledger
+// without TaxType set at all. Relying on TaxType alone would return a
+// structurally correct but financially empty result. So: include a ledger
+// if EITHER its $TaxType matches OR its name matches a known pattern, and
+// tag which method found it so a reviewer can see the confidence per row —
+// not filtered by parent group at all, since real companies were confirmed
+// to scatter these ledgers across many different groups, not one standard
+// "Duties & Taxes" group as official docs describe.
+async function buildTaxLiabilitySummary(
+  { from, to }: { from: string; to: string },
+  taxType: string,
+  namePatterns: RegExp[]
+): Promise<{ rows: TaxLedgerRow[]; netTotal: number | null; from: string; to: string }> {
+  const dateRange = { fromDate: toTallyActionDate(from), toDate: toTallyActionDate(to) };
+  const xml = buildCollectionXml(
+    "Ledger",
+    [{ name: "NAME" }, { name: "CLOSINGBALANCE", datatype: "amount" }, { name: "TAXTYPE" }],
+    [],
+    dateRange
+  );
+  const allRows = extractRecords(await tallyRequest(xml)) as { NAME: string; CLOSINGBALANCE: number; TAXTYPE: string }[];
+
+  const rows: TaxLedgerRow[] = [];
+  for (const r of allRows) {
+    const isStructural = r.TAXTYPE === taxType;
+    const isNamePattern = namePatterns.some((p) => p.test(r.NAME));
+    if (!isStructural && !isNamePattern) continue;
+    rows.push({
+      ledgerName: r.NAME,
+      // RCM checked first and kept as its own category, separate from
+      // input/output — reverse-charge liability is the thing that's
+      // "easily missed manually" (it nets to a wash for most businesses,
+      // but still has to be booked on both sides), so an "Input VAT - RCM"
+      // ledger getting folded into the generic "input" bucket would bury
+      // exactly the exposure this is meant to surface.
+      // Word-boundary match anywhere in the name, not just a prefix —
+      // confirmed live that real companies name these both ways ("Input
+      // CGST" vs "CGST INPUT"/"CGST OUTPUT"), and a prefix-only check
+      // silently miscategorized every row as "other" for a company using
+      // the suffix style, even though inclusion still worked correctly.
+      category: /\brcm\b/i.test(r.NAME) || /reverse\s*charge/i.test(r.NAME)
+        ? "rcm"
+        : /\binput\b/i.test(r.NAME)
+        ? "input"
+        : /\boutput\b/i.test(r.NAME)
+        ? "output"
+        : "other",
+      matchMethod: isStructural ? "structural" : "name_pattern",
+      closingBalance: r.CLOSINGBALANCE,
+    });
+  }
+
+  const netTotal = rows.length > 0 ? rows.reduce((sum, r) => sum + (r.closingBalance || 0), 0) : null;
+  return { rows, netTotal, from, to };
 }
 
 function todayTallyDate(): string {
@@ -2342,16 +2485,24 @@ export async function handleTool(
       // "Company" is a UI form in Tally's TDL, not an exportable report —
       // requesting it via REPORTNAME throws "Error in TDL. 'Form:Company'
       // No 'PARTS'!". The company object is fetched as a COLLECTION instead.
-      const xml = buildCollectionXml("Company", [
-        { name: "NAME" },
-        { name: "ADDRESS", expression: 'if $$IsEmpty:$Address then "" else $$FullList:Address:$Address' },
-        { name: "STATENAME" },
-        { name: "COUNTRYNAME" },
-        { name: "PINCODE" },
-        { name: "PHONENUMBER" },
-        { name: "EMAIL" },
-        { name: "BOOKSFROM", datatype: "date" },
-      ]);
+      // Filtered to the current company only — confirmed live that with more
+      // than one Tally company open simultaneously, an unfiltered Company
+      // collection query returns ALL open companies as an array, not just
+      // the active one, which silently broke this tool's single-object shape.
+      const xml = buildCollectionXml(
+        "Company",
+        [
+          { name: "NAME" },
+          { name: "ADDRESS", expression: 'if $$IsEmpty:$Address then "" else $$FullList:Address:$Address' },
+          { name: "STATENAME" },
+          { name: "COUNTRYNAME" },
+          { name: "PINCODE" },
+          { name: "PHONENUMBER" },
+          { name: "EMAIL" },
+          { name: "BOOKSFROM", datatype: "date" },
+        ],
+        [{ name: "OnlyCurrent", expression: "$$IsEqual:$Name:##SVCurrentCompany" }]
+      );
       const result = await tallyRequest(xml);
       return JSON.stringify(cleanTallyResult(result), null, 2);
     }
@@ -2422,14 +2573,50 @@ export async function handleTool(
       const { asOf } = args as { asOf: string };
       const xml = reportXml("Balance Sheet", { SVFROMDATE: asOf, SVTODATE: asOf });
       const result = await tallyRequest(xml);
-      return JSON.stringify(cleanTallyResult(result), null, 2);
+      const cleaned = cleanTallyResult(result) as any;
+      try {
+        // Tally's Balance Sheet export shape: two parallel top-level arrays
+        // matched only by index position, not key-value pairs (confirmed
+        // live) — never zip them if lengths disagree, since that would
+        // silently pair the wrong name with the wrong amount.
+        const names = cleaned?.ENVELOPE?.BSNAME;
+        const amounts = cleaned?.ENVELOPE?.BSAMT;
+        if (Array.isArray(names) && Array.isArray(amounts) && names.length === amounts.length) {
+          const rows = names.map((n: any, i: number) => ({
+            groupName: n?.DSPACCNAME?.DSPDISPNAME ?? null,
+            amount: amounts[i]?.BSMAINAMT ?? amounts[i]?.BSSUBAMT ?? null,
+          }));
+          await cacheBalanceSheet(rows, asOf);
+        }
+      } catch {
+        // Caching is a convenience layer — never let it block returning the actual Balance Sheet result.
+      }
+      return JSON.stringify(cleaned, null, 2);
     }
 
     case "get_trial_balance": {
       const { from, to } = args as { from: string; to: string };
       const xml = reportXml("Trial Balance", { SVFROMDATE: from, SVTODATE: to });
       const result = await tallyRequest(xml);
-      return JSON.stringify(cleanTallyResult(result), null, 2);
+      const cleaned = cleanTallyResult(result) as any;
+      try {
+        // Trial Balance's export shape is different again from Balance
+        // Sheet's (DSPACCNAME/DSPACCINFO, not BSNAME/BSAMT) — same
+        // length-mismatch guard applies.
+        const names = cleaned?.ENVELOPE?.DSPACCNAME;
+        const info = cleaned?.ENVELOPE?.DSPACCINFO;
+        if (Array.isArray(names) && Array.isArray(info) && names.length === info.length) {
+          const rows = names.map((n: any, i: number) => ({
+            name: n?.DSPDISPNAME ?? null,
+            debitAmount: info[i]?.DSPCLDRAMT?.DSPCLDRAMTA ?? null,
+            creditAmount: info[i]?.DSPCLCRAMT?.DSPCLCRAMTA ?? null,
+          }));
+          await cacheTrialBalance(rows, from, to);
+        }
+      } catch {
+        // Caching is a convenience layer — never let it block returning the actual Trial Balance result.
+      }
+      return JSON.stringify(cleaned, null, 2);
     }
 
     case "get_groups": {
@@ -2496,6 +2683,166 @@ export async function handleTool(
       const xml = reportXml("Bills Payable", { SVFROMDATE: asOf, SVTODATE: asOf });
       const result = await tallyRequest(xml);
       return JSON.stringify(cleanTallyResult(result), null, 2);
+    }
+
+    case "get_vat_liability_summary": {
+      // Input/Output can appear before or after the tax name (confirmed
+      // live: "Input VAT 5%" and, on another real company, "VAT INPUT"
+      // style naming) — match either ordering, not just a prefix.
+      const namePatterns = [
+        /\binput\b.*vat|vat.*\binput\b/i,
+        /\boutput\b.*vat|vat.*\boutput\b/i,
+        /vat\s*payable/i,
+        /vat\s*receivable/i,
+      ];
+      const result = await buildTaxLiabilitySummary(args as { from: string; to: string }, "VAT", namePatterns);
+      if (result.rows.length === 0) {
+        return JSON.stringify(
+          {
+            rows: [],
+            netTotal: null,
+            note:
+              "No ledgers found tagged Tally's own Type-of-duty/tax as VAT, and none matching Input/Output/" +
+              "Payable/Receivable VAT naming. This likely means this company isn't VAT-registered in Tally, or " +
+              "uses a genuinely unrecognizable naming convention — it does not mean the VAT liability is zero. " +
+              "Check get_groups/get_ledgers for this company's actual tax ledger setup.",
+          },
+          null,
+          2
+        );
+      }
+      try {
+        await cacheVatSummary(result.rows, result.from, result.to);
+      } catch {
+        // Caching is a convenience layer — never let it block returning the actual result.
+      }
+      return JSON.stringify({ rows: result.rows, netTotal: result.netTotal }, null, 2);
+    }
+
+    case "get_vat_return_box_summary": {
+      // Reuses the exact same ledger query/classification as
+      // get_vat_liability_summary — this isn't a new data source, it's the
+      // same verified rows regrouped into Form 201's box structure. Only
+      // boxes that are actually derivable from ledger closing balances are
+      // filled in; boxes that need voucher-level detail (emirate-wise
+      // sales split, zero-rated/exempt classification, goods imported) are
+      // explicitly listed as not covered rather than silently omitted or
+      // guessed at.
+      const namePatterns = [
+        /\binput\b.*vat|vat.*\binput\b/i,
+        /\boutput\b.*vat|vat.*\boutput\b/i,
+        /vat\s*payable/i,
+        /vat\s*receivable/i,
+        /vat.*reverse\s*charge|reverse\s*charge.*vat/i,
+      ];
+      const result = await buildTaxLiabilitySummary(args as { from: string; to: string }, "VAT", namePatterns);
+      if (result.rows.length === 0) {
+        return JSON.stringify(
+          {
+            boxes: null,
+            note:
+              "No VAT ledgers found (same check as get_vat_liability_summary) — this likely means this company " +
+              "isn't VAT-registered in Tally, or uses an unrecognizable naming convention. Run " +
+              "get_vat_liability_summary first to see the underlying ledger rows.",
+          },
+          null,
+          2
+        );
+      }
+
+      const sum = (pred: (r: TaxLedgerRow) => boolean) =>
+        result.rows.filter(pred).reduce((s, r) => s + (r.closingBalance || 0), 0);
+
+      const box1_standard_rated_supplies_output_vat = sum((r) => r.category === "output");
+      const box3_reverse_charge_output_vat = sum((r) => r.category === "rcm" && /\boutput\b/i.test(r.ledgerName));
+      const box9_standard_rated_expenses_input_vat = sum((r) => r.category === "input");
+      const box10_reverse_charge_input_vat = sum((r) => r.category === "rcm" && /\binput\b/i.test(r.ledgerName));
+      const rcmUnclassified = result.rows.filter(
+        (r) => r.category === "rcm" && !/\binput\b/i.test(r.ledgerName) && !/\boutput\b/i.test(r.ledgerName)
+      );
+
+      const boxes = {
+        box1_standard_rated_supplies_output_vat,
+        box3_reverse_charge_output_vat,
+        box9_standard_rated_expenses_input_vat,
+        box10_reverse_charge_input_vat,
+        box11_net_vat_due:
+          box1_standard_rated_supplies_output_vat +
+          box3_reverse_charge_output_vat -
+          (box9_standard_rated_expenses_input_vat + box10_reverse_charge_input_vat),
+      };
+
+      return JSON.stringify(
+        {
+          boxes,
+          sourceRows: result.rows,
+          unclassifiedRcmLedgers:
+            rcmUnclassified.length > 0
+              ? rcmUnclassified.map((r) => r.ledgerName).concat(
+                  "These matched an RCM name pattern but neither 'input' nor 'output', so they aren't in " +
+                    "box3/box10 above — check them manually and add to the relevant box."
+                )
+              : undefined,
+          boxesNotCovered: {
+            "box1a_to_1g_emirate_split":
+              "Box 1 above is the combined total across all emirates. Tally's ledger balances don't carry " +
+              "place-of-supply, so the emirate-wise split (Abu Dhabi/Dubai/Sharjah/Ajman/UAQ/RAK/Fujairah) " +
+              "needs the Sales register or voucher-level data, not this tool.",
+            box2_tourist_refund_scheme: "Not derivable from ledger balances — check the Tourist Refund Scheme report directly if applicable.",
+            box4_zero_rated_supplies:
+              "Zero-rated sales carry no VAT ledger entry to trace, so they can't be picked up from tax-ledger " +
+              "balances at all — check the Sales register for supplies invoiced at 0%.",
+            box5_exempt_supplies: "Same limitation as zero-rated — exempt supplies carry no VAT ledger trace.",
+            box6_7_goods_imported_and_adjustments:
+              "Not reliably separable from other RCM entries by ledger name alone — check import/customs " +
+              "declarations and any dedicated 'Import VAT' ledger directly.",
+          },
+          note:
+            "This is a ledger-balance trace of the VAT 201 boxes we can actually compute from Tally data, not a " +
+            "substitute for the return itself — cross-check totals here against Tally's own VAT Return report " +
+            "and the boxes listed in boxesNotCovered before filing.",
+        },
+        null,
+        2
+      );
+    }
+
+    case "get_gst_liability_summary": {
+      // Same either-ordering reasoning as VAT — confirmed live on a real
+      // company that uses "CGST INPUT"/"CGST OUTPUT" (suffix style) rather
+      // than "Input CGST" (prefix style).
+      const namePatterns = [
+        /\binput\b.*[cis]gst|[cis]gst.*\binput\b/i,
+        /\boutput\b.*[cis]gst|[cis]gst.*\boutput\b/i,
+        /gst\s*payable/i,
+        /gst\s*receivable/i,
+        /gst\s*on\s*rcm/i,
+      ];
+      const result = await buildTaxLiabilitySummary(args as { from: string; to: string }, "GST", namePatterns);
+      if (result.rows.length === 0) {
+        return JSON.stringify(
+          {
+            rows: [],
+            netTotal: null,
+            note:
+              "No ledgers found tagged Tally's own Type-of-duty/tax as GST, and none matching Input/Output " +
+              "CGST/SGST/IGST or GST Payable/Receivable naming. This likely means this company isn't " +
+              "GST-registered in Tally, or uses a genuinely unrecognizable naming convention — it does not mean " +
+              "the GST liability is zero. Check get_groups/get_ledgers for this company's actual tax ledger " +
+              "setup. Note: generic expense ledgers that merely mention GST in their name (e.g. a freight " +
+              "ledger like 'Transport GST 18%', or 'GST Expenses'/'GST Ineligible' write-off ledgers) are " +
+              "deliberately excluded — check those manually if this company has real GST activity elsewhere.",
+          },
+          null,
+          2
+        );
+      }
+      try {
+        await cacheGstSummary(result.rows, result.from, result.to);
+      } catch {
+        // Caching is a convenience layer — never let it block returning the actual result.
+      }
+      return JSON.stringify({ rows: result.rows, netTotal: result.netTotal }, null, 2);
     }
 
     case "get_ledger_vouchers": {
@@ -2590,7 +2937,13 @@ export async function handleTool(
       // would report "OK" while Tally stayed on the old company, and every
       // subsequent read/write in the session would silently target the wrong
       // company's books with nothing to catch it.
-      const checkXml = buildCollectionXml("Company", [{ name: "NAME" }]);
+      // Filtered to the current company — see get_company_info for why an
+      // unfiltered query breaks with more than one Tally company open.
+      const checkXml = buildCollectionXml(
+        "Company",
+        [{ name: "NAME" }],
+        [{ name: "OnlyCurrent", expression: "$$IsEqual:$Name:##SVCurrentCompany" }]
+      );
       const checkResult = await tallyRequest(checkXml);
       const cleaned = cleanTallyResult(checkResult) as any;
       const activeCompany = cleaned?.DATA?.ROW?.NAME;
@@ -2939,7 +3292,13 @@ export async function handleTool(
       let companyOpen: string | null = null;
       let connectionError: string | null = null;
       try {
-        const xml = buildCollectionXml("Company", [{ name: "NAME" }]);
+        // Filtered to the current company — see get_company_info for why an
+        // unfiltered query breaks with more than one Tally company open.
+        const xml = buildCollectionXml(
+          "Company",
+          [{ name: "NAME" }],
+          [{ name: "OnlyCurrent", expression: "$$IsEqual:$Name:##SVCurrentCompany" }]
+        );
         const result = await tallyRequest(xml);
         const cleaned = cleanTallyResult(result) as any;
         // Confirmed live: something else can be listening on the configured port and

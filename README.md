@@ -100,7 +100,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (53 total)
+## Available tools (56 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -123,6 +123,9 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `get_stock_summary` | `asOf` | Stock Summary as of a date |
 | `get_bills_receivable` | `asOf` | Outstanding Bills Receivable |
 | `get_bills_payable` | `asOf` | Outstanding Bills Payable |
+| `get_vat_liability_summary` | `from`, `to` | UAE VAT liability for a period — Input/Output/RCM/other VAT ledgers found via Tally's own tax-type field or name pattern (whichever actually catches this company's real ledgers), plus a net total |
+| `get_vat_return_box_summary` | `from`, `to` | UAE VAT 201 return boxes for a period, traced from the same ledgers as `get_vat_liability_summary` — plus an explicit list of the real boxes (emirate-wise sales split, zero-rated, exempt, imports) that ledger balances can't answer |
+| `get_gst_liability_summary` | `from`, `to` | India GST liability for a period — same hybrid approach as VAT, for CGST/SGST/IGST input/output/payable/receivable/RCM ledgers |
 
 ### Write — vouchers
 
@@ -133,10 +136,10 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `delete_voucher` | `voucherType`, `voucherNumber`, `date` | Permanently deletes a voucher — no trace left, distinct from cancelling (which keeps it visible, marked Cancelled) |
 | `create_stock_journal` | `date`, `narration?`, `sources` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `destinations` (same shape), `additionalCosts?` (array of `ledgerName`, `amount`, `allocationType?`), `voucherType?`, `voucherNumber?` | Creates a Stock Journal (or Manufacturing Journal, via `voucherType`) voucher moving inventory from one or more source items to one or more destination items — supports multiple raw materials in and multiple finished/by-products out in a single voucher, plus optional additional costs (labour, freight) folded into the produced items' valuation. Inventory-only, no ledger balance effect from `additionalCosts` itself — see the note below |
 | `update_stock_journal` | Same fields as `create_stock_journal`, plus required `voucherNumber` | Replaces an existing Stock Journal/Manufacturing Journal's source/destination lines in place |
-| `create_material_in` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Material In voucher — stock received back from a job worker, tracked against their ledger without a real accounting posting. **Extrapolated** from a genuine Tally-exported XML template, not verified against a real manually-created example in this project — verify after use |
-| `create_material_out` | Same shape as `create_material_in` | Creates a Material Out voucher — stock sent out to a job worker. Mirror of `create_material_in`, same extrapolated caveat |
-| `create_rejections_in` | `date`, `narration?`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Rejections In voucher — goods rejected and returned to you. Inventory-only. **Extrapolated** by analogy to other inventory-only voucher shapes — no confirmed real-world example was available; verify carefully after use |
-| `create_rejections_out` | Same shape as `create_rejections_in` | Creates a Rejections Out voucher — goods you're rejecting outward. Mirror of `create_rejections_in`, same extrapolated caveat |
+| `create_material_in` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Material In voucher — stock received back from a job worker, tracked against their ledger without a real accounting posting. Verified live: stock quantity increases correctly and the party ledger's balance stays unchanged, exactly as designed |
+| `create_material_out` | Same shape as `create_material_in` | Creates a Material Out voucher — stock sent out to a job worker. Mirror of `create_material_in`, same verified-live behavior |
+| `create_rejections_in` | `date`, `narration?`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Rejections In voucher — goods rejected and returned to you. Inventory-only. Verified live: stock quantity increases correctly |
+| `create_rejections_out` | Same shape as `create_rejections_in` | Creates a Rejections Out voucher — goods you're rejecting outward. Mirror of `create_rejections_in`, same verified-live behavior |
 | `create_sales_invoice` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`, `vatLedger?`, `vatRatePercent?`), `vatLedger?`, `vatRatePercent?`, `billName?`, `billType?`, `voucherNumber?` | Creates a real item-invoice Sales voucher — stock item lines with quantity/rate/discount, each posted to its own Sales ledger, grouped into one VAT line per distinct rate. Distinct from `create_voucher`, which has no stock item support. `voucherNumber`: some Tally configurations stop auto-numbering item-invoice vouchers via the XML gateway — pass it explicitly if creation fails with a blank `EXCEPTIONS:1`. **Note:** using the *same* party ledger/stock item in both a Sales and a Purchase invoice can make it return `Cannot be deleted!` afterward — a Tally **Company Data → Rewrite** clears this (not a permanent lock) |
 | `update_sales_invoice` | Same fields as `create_sales_invoice`, plus required `voucherNumber` | Replaces an existing Sales invoice's item lines/party/narration in place, instead of delete+recreate |
 | `create_purchase_invoice` | Same shape as `create_sales_invoice`, with `purchaseLedger` per item instead of `salesLedger` | Creates a real item-invoice Purchase voucher — the buying-side mirror of `create_sales_invoice`. Same dual-role deletion caveat applies |
@@ -169,7 +172,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `update_stock_item` | `name`, `group?`, `unit?`, `description?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Updates any subset of an existing stock item's fields — same coverage as `create_stock_item`, all optional except `name` |
 | `delete_stock_item` | `name` | Deletes a stock item (fails if it has transactions posted) |
 | `create_unit` | `symbol`, `formalName?`, `decimalPlaces?` **or** `baseUnit`+`additionalUnit`+`conversion` for a compound unit | Creates a Unit of Measure — simple (e.g. `'Kg'`) by default, or compound (e.g. `'Box of 12 Nos'`) when `baseUnit` is passed. Both simple units must already exist before creating the compound unit that references them — required before using a unit that doesn't exist yet |
-| `set_bill_of_materials` | `stockItem`, `componentListName?`, `basicQty?`, `unit?`, `components` (array of `stockItem`, `qty`, `unit`, `natureOfItem?`, `godown?`) | Attaches a recipe to an existing finished-goods stock item. Pure convenience layer over `create_stock_journal` — doesn't move stock or post anything itself. **Extrapolated** from a genuine Tally-exported stock item master's XML shape — verify carefully after use, especially `natureOfItem`'s accepted values |
+| `set_bill_of_materials` | `stockItem`, `componentListName?`, `basicQty?`, `unit?`, `components` (array of `stockItem`, `qty`, `unit`, `natureOfItem?`, `godown?`) | Attaches a recipe to an existing finished-goods stock item. Pure convenience layer over `create_stock_journal` — doesn't move stock or post anything itself. Verified live: attaches without error and confirmed to cause no stock movement on its own. `natureOfItem`'s accepted values are still unverified — check after use if you pass it |
 | `create_godown` | `name`, `parent?` | Creates a Godown/Location, optionally nested under a parent godown — pass the parent's plain name, not a dotted path |
 | `create_cost_category` | `name`, `allocateToRevenue?`, `allocateToNonRevenue?` | Creates a Cost Category (grouping of cost centres) |
 | `create_cost_centre` | `name`, `category?`, `parent?` | Creates a Cost Centre for tagging voucher entries (see `create_voucher`'s cost centre fields) |
@@ -207,21 +210,27 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `sync_vouchers_to_sql` | `from`, `to` | Pulls voucher headers (date, type, number, party, amount, narration — not line items) for one date range into the same cache. Call it once per chunk (e.g. per quarter) to build up full multi-year history within a session — each call only replaces vouchers in its own date range, so calling it for 2024 then 2025 gives you both |
 | `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)` |
 
-`get_profit_and_loss` and `get_stock_summary` also cache themselves into
-this same store automatically — `profit_and_loss(ledger_name, group_name,
-closing_balance, period_from, period_to)` and `stock_summary(name, parent,
-opening_qty, closing_qty, opening_value, closing_value, as_of_date)` — no
-separate sync call needed. Each holds only the most recent call's result,
-replaced whenever you call that report tool again.
+`get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
+`get_trial_balance`, `get_vat_liability_summary`, and
+`get_gst_liability_summary` also cache themselves into this same store
+automatically — `profit_and_loss(ledger_name, group_name, closing_balance,
+period_from, period_to)`, `stock_summary(name, parent, opening_qty,
+closing_qty, opening_value, closing_value, as_of_date)`,
+`balance_sheet(group_name, amount, as_of_date)`, `trial_balance(name,
+debit_amount, credit_amount, period_from, period_to)`,
+`vat_summary(ledger_name, category, match_method, closing_balance,
+period_from, period_to)`, and `gst_summary` (same shape as `vat_summary`)
+— no separate sync call needed. Each holds only the most recent call's
+result, replaced whenever you call that report tool again.
 
 > The cache is **in-memory and session-scoped only** — it's gone as soon as
 > the server process exits, and there's no persistence to disk. This is
 > deliberate: since one Tally connection can be pointed at many different
 > client companies over time (`set_company`), nothing here tracks *which*
 > company a cached row came from. If you switch companies, re-sync (or, for
-> `profit_and_loss`/`stock_summary`, re-call the report tool) before
-> querying — don't run `query_sql` against a cache that spans a company
-> switch, since the rows won't be distinguishable by company.
+> the six automatic tables, re-call the report tool) before querying —
+> don't run `query_sql` against a cache that spans a company switch, since
+> the rows won't be distinguishable by company.
 
 ### Audit & permissions
 
