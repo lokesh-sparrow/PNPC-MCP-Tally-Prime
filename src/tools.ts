@@ -1354,6 +1354,98 @@ export const tools = [
     },
   },
   {
+    name: "create_sales_order",
+    description:
+      "Create a Sales Order in TallyPrime — a future commitment to sell, before any goods move or invoicing " +
+      "happens. Same item-line shape as create_sales_invoice/create_delivery_note but VCHTYPE is 'Sales Order' " +
+      "and Tally classifies it as an Order-class voucher, structurally different from Delivery Note's " +
+      "inventory-class. Follow up with create_delivery_note (dispatch) and/or create_sales_invoice (billing) " +
+      "against the same party once goods actually move. Same voucher-type-active prerequisite as " +
+      "create_delivery_note (confirmed live) — check it's on in the company before relying on this. " +
+      "orderNumber and each item's dueDate are REQUIRED (unlike other item-invoice tools, where the equivalent " +
+      "fields are optional): confirmed live that Tally rejects an Order-class voucher with 'Order No. is " +
+      "missing in Item Allocations' and separately 'Due Date of Order is missing in Item Allocations' without " +
+      "them. Reverse-engineered from a real manually-created Sales Order's own export: the UI's 'Order no.' " +
+      "field is backed by the voucher-level REFERENCE tag (independent of the voucher number — the real example " +
+      "had voucherNumber '1' and Order no. '12345' as genuinely different values), while the per-item Order No. " +
+      "and Due Date both live nested inside each item's BATCHALLOCATIONS.LIST, not as direct ALLINVENTORYENTRIES " +
+      "fields as their names might suggest. Also confirmed live: Tally silently reassigns its own voucher number " +
+      "for Order-class vouchers regardless of an explicit voucherNumber passed in (its 'Auto Retain' numbering " +
+      "style for this voucher type) — check the actual assigned number via get_vouchers after creating one, " +
+      "don't assume the value you passed was used.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Order date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity ordered" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
+              dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED — confirmed live that Tally rejects an Order-class voucher with 'Due Date of Order is missing in Item Allocations' without one." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger", "dueDate"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber; can be any value the customer/business uses to reference this order." },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+      },
+      required: ["date", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
+    name: "create_purchase_order",
+    description:
+      "Create a Purchase Order in TallyPrime — a future commitment to buy, before any goods move or invoicing " +
+      "happens. Same item-line shape as create_purchase_invoice/create_receipt_note but VCHTYPE is 'Purchase " +
+      "Order' and Tally classifies it as an Order-class voucher. Follow up with create_receipt_note (goods in) " +
+      "and/or create_purchase_invoice (billing) against the same party once goods actually arrive. Same " +
+      "voucher-type-active prerequisite as create_delivery_note (confirmed live). orderNumber and each item's " +
+      "dueDate are REQUIRED — same reasoning as create_sales_order: reverse-engineered from a real Sales Order " +
+      "export, confirmed the same live errors and Auto Retain numbering behavior apply here too.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Order date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Supplier ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity ordered" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to" },
+              dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED — confirmed live that Tally rejects an Order-class voucher with 'Due Date of Order is missing in Item Allocations' without one." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger", "dueDate"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber; can be any value the business uses to reference this order." },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+      },
+      required: ["date", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
     name: "create_group",
     description:
       "Create a new account group in TallyPrime, nested under a parent group, or rename/reparent an existing one " +
@@ -2065,6 +2157,46 @@ function createReceiptNoteXml(args: {
   });
 }
 
+function createSalesOrderXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string; dueDate: string })[];
+  orderNumber: string;
+  voucherNumber?: string;
+}): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("create-sales-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
+    partyAmount,
+    orderNumber: args.orderNumber,
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createPurchaseOrderXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { purchaseLedger: string; dueDate: string })[];
+  orderNumber: string;
+  voucherNumber?: string;
+}): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("create-purchase-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
+    partyAmount,
+    orderNumber: args.orderNumber,
+    voucherNumber: args.voucherNumber,
+  });
+}
+
 function createStockJournalXml(args: {
   date: string;
   narration?: string;
@@ -2722,14 +2854,19 @@ export async function handleTool(
       // that it silently ignores SVFROMDATE/SVTODATE entirely, always
       // returning the same fixed set regardless of the requested range (even
       // a date a year before the company's books start returned the same
-      // count as the full financial year). Rebuilt on the same Voucher
-      // collection query sync_vouchers_to_sql already uses and trusts,
-      // which does respect the date range (confirmed live) — same field set
-      // (date, voucher_type, voucher_number, party_ledger, amount,
-      // narration), a flat row list instead of Tally's raw nested voucher
-      // XML dump.
+      // count as the full financial year). Rebuilt on the same style of
+      // Voucher collection query sync_vouchers_to_sql already uses and
+      // trusts, which does respect the date range (confirmed live) — same
+      // field set (date, voucher_type, voucher_number, party_ledger,
+      // amount, narration), a flat row list instead of Tally's raw nested
+      // voucher XML dump. Uses its own template, not sync-vouchers.xml.njk
+      // directly: that one has a FilterExcludeOrderVch filter (deliberate,
+      // for the SQL cache's accounting-reconciliation use case) that would
+      // silently hide Sales/Purchase Order vouchers from a general-purpose
+      // Day Book replacement — this tool's job is to show every voucher in
+      // range, so Order-class vouchers stay included here.
       const { from, to } = args as { from: string; to: string };
-      const xml = render("sync-vouchers.xml.njk", {
+      const xml = render("vouchers-in-range.xml.njk", {
         fromDate: toTallyActionDate(from),
         toDate: toTallyActionDate(to),
       });
@@ -3325,6 +3462,20 @@ export async function handleTool(
     case "create_receipt_note": {
       const noteArgs = args as Parameters<typeof createReceiptNoteXml>[0];
       const xml = createReceiptNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_sales_order": {
+      const orderArgs = args as Parameters<typeof createSalesOrderXml>[0];
+      const xml = createSalesOrderXml(orderArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_purchase_order": {
+      const orderArgs = args as Parameters<typeof createPurchaseOrderXml>[0];
+      const xml = createPurchaseOrderXml(orderArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }

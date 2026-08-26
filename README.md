@@ -100,7 +100,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (66 total)
+## Available tools (68 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -156,8 +156,10 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `update_credit_note` | Same fields as `create_credit_note`, plus required `voucherNumber` | Replaces an existing Credit Note's item lines in place |
 | `create_debit_note` | Same shape as `create_purchase_invoice`, `billType` defaults to `'Agst Ref'` | Creates a Purchase-return Debit Note — sign convention mirrors Sales's. Returning 3 units decreases book quantity by 3 |
 | `update_debit_note` | Same fields as `create_debit_note`, plus required `voucherNumber` | Replaces an existing Debit Note's item lines in place |
-| `create_delivery_note` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`), `voucherNumber?` | Creates a Delivery Note — item-line dispatch of goods before/without a full Sales invoice. ⚠️ See [Troubleshooting](docs/TROUBLESHOOTING.md): the voucher type must be active in the company, and even then the created voucher isn't findable via `get_vouchers`/`get_ledger_vouchers`/`update_voucher`/`delete_voucher` — manage it in Tally's own UI |
+| `create_delivery_note` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`), `voucherNumber?` | Creates a Delivery Note — item-line dispatch of goods before/without a full Sales invoice. ⚠️ The voucher type must be active in the company first (a company-level toggle) — once active, `get_vouchers`/`delete_voucher` find it correctly; `get_ledger_vouchers` never shows it, by design |
 | `create_receipt_note` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `purchaseLedger`, `godown?`, `batchName?`, `discountPercent?`), `voucherNumber?` | Creates a Receipt Note — buying-side mirror of `create_delivery_note`, same caveats |
+| `create_sales_order` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `dueDate`, `godown?`, `batchName?`, `discountPercent?`), `orderNumber`, `voucherNumber?` | Creates a Sales Order — a future commitment to sell, no stock/ledger movement yet. `orderNumber` and each item's `dueDate` are required (Tally rejects an Order-class voucher without them). Same voucher-type-active caveat as `create_delivery_note`. Tally silently reassigns its own voucher number for Order-class vouchers regardless of what's passed — check the real number via `get_vouchers` after creating one |
+| `create_purchase_order` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `purchaseLedger`, `dueDate`, `godown?`, `batchName?`, `discountPercent?`), `orderNumber`, `voucherNumber?` | Creates a Purchase Order — buying-side mirror of `create_sales_order`, same caveats |
 | `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). Counting 95 of an item with 100 in stock closes it at 95. Doesn't post any monetary write-off for the shortage/excess value itself — see [Troubleshooting](docs/TROUBLESHOOTING.md) if you're on an older build than this |
 | `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
 
