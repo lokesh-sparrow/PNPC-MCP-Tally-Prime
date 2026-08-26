@@ -1,0 +1,75 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>PNPCMCPVoucherItems</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>{{ fromDate }}</SVFROMDATE>
+        <SVTODATE>{{ toDate }}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="PNPCMCPVoucherItems">
+            <FORMS>PNPCMCPVoucherItemsForm</FORMS>
+          </REPORT>
+          <FORM NAME="PNPCMCPVoucherItemsForm">
+            <PARTS>PNPCMCPVoucherItemsPart</PARTS>
+            <XMLTAG>DATA</XMLTAG>
+          </FORM>
+          <PART NAME="PNPCMCPVoucherItemsPart">
+            <LINES>PNPCMCPVoucherItemsLine</LINES>
+            <REPEAT>PNPCMCPVoucherItemsLine : PNPCMCPVoucherItemsCollection</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPVoucherItemsLine">
+            <FIELDS>FldGuid,FldDate,FldType,FldNum</FIELDS>
+            <EXPLODE>PNPCMCPItemPart</EXPLODE>
+            <XMLTAG>ROW</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldGuid"><SET>$Guid</SET><XMLTAG>voucher_guid</XMLTAG></FIELD>
+          <FIELD NAME="FldDate"><SET>$Date</SET><XMLTAG>date</XMLTAG></FIELD>
+          <FIELD NAME="FldType"><SET>$VoucherTypeName</SET><XMLTAG>voucher_type</XMLTAG></FIELD>
+          <FIELD NAME="FldNum"><SET>$VoucherNumber</SET><XMLTAG>voucher_number</XMLTAG></FIELD>
+          <PART NAME="PNPCMCPItemPart">
+            <LINES>PNPCMCPItemLine</LINES>
+            <REPEAT>PNPCMCPItemLine : AllInventoryEntries</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPItemLine">
+            <FIELDS>FldItemName,FldQty,FldRate,FldAmount,FldIsDeemedPositive</FIELDS>
+            <EXPLODE>PNPCMCPBatchPart</EXPLODE>
+            <XMLTAG>ITEM</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldItemName"><SET>$StockItemName</SET><XMLTAG>stock_item</XMLTAG></FIELD>
+          <FIELD NAME="FldQty"><SET>$$StringFindAndReplace:($$Number:$$String:$ActualQty:"TailUnits"):"(-)":"-"</SET><XMLTAG>qty</XMLTAG></FIELD>
+          <FIELD NAME="FldRate"><SET>$$String:$Rate</SET><XMLTAG>rate</XMLTAG></FIELD>
+          <FIELD NAME="FldAmount"><SET>$$StringFindAndReplace:(if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount):"(-)":"-"</SET><XMLTAG>amount</XMLTAG></FIELD>
+          <FIELD NAME="FldIsDeemedPositive"><SET>if $IsDeemedPositive then 1 else 0</SET><XMLTAG>is_deemed_positive</XMLTAG></FIELD>
+          <PART NAME="PNPCMCPBatchPart">
+            <LINES>PNPCMCPBatchLine</LINES>
+            <REPEAT>PNPCMCPBatchLine : BatchAllocations</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPBatchLine">
+            <FIELDS>FldGodown,FldBatch</FIELDS>
+            <XMLTAG>BATCH</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldGodown"><SET>$GodownName</SET><XMLTAG>godown</XMLTAG></FIELD>
+          <FIELD NAME="FldBatch"><SET>$BatchName</SET><XMLTAG>batch</XMLTAG></FIELD>
+          <COLLECTION NAME="PNPCMCPVoucherItemsCollection">
+            <TYPE>Voucher</TYPE>
+            <FETCH>AllInventoryEntries</FETCH>
+            <FILTER>PNPCMCPFilterCancelled,PNPCMCPFilterOptional</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="PNPCMCPFilterCancelled">NOT $IsCancelled</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="PNPCMCPFilterOptional">NOT $IsOptional</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

@@ -1,7 +1,7 @@
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, syncVouchers, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary } from "./db.js";
+import { syncAll, syncVouchers, syncVoucherItems, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
 
@@ -1956,12 +1956,38 @@ export const tools = [
     },
   },
   {
+    name: "sync_voucher_items_to_sql",
+    description:
+      "Pull voucher INVENTORY LINE ITEMS (stock item, qty, rate, amount, godown, batch — one row per item per " +
+      "batch allocation) for one date range into this session's SQL cache, so query_sql can compute movement " +
+      "analysis, godown-wise stock, or batch detail directly. This is the raw data those analyses need — Tally " +
+      "has no exportable 'Movement Analysis'/'Stock Ageing Analysis'/'Godown Summary' report reachable over the " +
+      "gateway (confirmed live against all 138 registered report names, and confirmed live that per-godown " +
+      "$ClosingBalance/SVGODOWNNAME scoping doesn't work either), so this connector doesn't try to replicate " +
+      "those as report tools — pull the line items with this, then write the aggregation as SQL. qty/amount are " +
+      "UNSIGNED as Tally stores them on the inventory entry; use is_deemed_positive together with voucher_type " +
+      "to work out inward vs outward direction. A voucher with no stock items (Payment, Journal, etc.) " +
+      "contributes zero rows, not an empty one. Same chunked, additive-by-date-range model and same timeout " +
+      "caution as sync_vouchers_to_sql — quarterly/monthly chunks for a busy company.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date in DD-MM-YYYY format" },
+        to: { type: "string", description: "End date in DD-MM-YYYY format" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
     name: "query_sql",
     description:
       "Run a read-only SQL SELECT query against this session's in-memory cache (gone when the session ends). " +
       "Tables: ledgers(name, parent, closing_balance), groups(name, parent), stock_items(name, parent, " +
-      "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration) — " +
-      "all four populated only by explicitly calling sync_to_sql/sync_vouchers_to_sql first. " +
+      "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration), " +
+      "voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, " +
+      "is_deemed_positive, godown, batch) — all five populated only by explicitly calling " +
+      "sync_to_sql/sync_vouchers_to_sql/sync_voucher_items_to_sql first. Movement analysis, godown-wise stock, " +
+      "and batch/ageing detail are just SELECTs over voucher_items — there is no separate report tool for them. " +
       "profit_and_loss(ledger_name, group_name, closing_balance, period_from, period_to), " +
       "stock_summary(name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date), " +
       "balance_sheet(group_name, amount, as_of_date), trial_balance(name, debit_amount, credit_amount, " +
@@ -3974,6 +4000,11 @@ export async function handleTool(
     case "sync_vouchers_to_sql": {
       const { from, to } = args as { from: string; to: string };
       return await syncVouchers(from, to);
+    }
+
+    case "sync_voucher_items_to_sql": {
+      const { from, to } = args as { from: string; to: string };
+      return await syncVoucherItems(from, to);
     }
 
     case "query_sql": {

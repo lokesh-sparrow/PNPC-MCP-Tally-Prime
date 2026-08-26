@@ -18,6 +18,27 @@ per quarter) to build up full multi-year history within a session without
 a single request large enough to risk Tally's gateway timing out. Re-running
 it for a range you already synced just refreshes that range.
 
+`sync_voucher_items_to_sql(from, to)` pulls voucher **inventory line items**
+(stock item, qty, rate, amount, godown, batch) — one row per item per batch
+allocation — for one date range into the same cache, additive by date range
+like `sync_vouchers_to_sql`. This is deliberately the *only* way this
+connector exposes movement analysis, godown-wise stock, or batch/ageing
+detail: Tally has no exportable "Movement Analysis"/"Stock Ageing
+Analysis"/"Godown Summary" report reachable over the gateway (confirmed
+live against all 138 registered report names — most aren't even directly
+exportable, they're UI drill-downs only reachable by clicking inside another
+report), and per-godown scoping via `$ClosingBalance:"<godown>"` or the
+`SVGODOWNNAME` static variable doesn't actually filter anything (confirmed
+live against a real test item with real stock in a real godown — both
+approaches silently returned the company-wide total regardless of which
+godown was asked for). The only way to get real godown/batch data out is to
+walk each voucher's own `AllInventoryEntries`, then each entry's own
+`BatchAllocations` — two levels of nested TDL `EXPLODE`, confirmed live safe
+(no gateway hang) and correct (godown/batch populate only where actually
+set, verified against known ground truth). So: pull the line items with this
+tool, then do the actual analysis as a `query_sql` `SELECT` — there is no
+dedicated report tool for movement/ageing/godown, on purpose.
+
 `query_sql` then runs an arbitrary read-only `SELECT` against that cache.
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
@@ -36,6 +57,7 @@ into context a second time.
 | `groups` | `name`, `parent` | `sync_to_sql` (explicit) |
 | `stock_items` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
 | `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` | `sync_vouchers_to_sql` (explicit) |
+| `voucher_items` | `voucher_guid`, `date`, `voucher_type`, `voucher_number`, `stock_item`, `qty`, `rate`, `amount`, `is_deemed_positive`, `godown`, `batch` | `sync_voucher_items_to_sql` (explicit) |
 | `profit_and_loss` | `ledger_name`, `group_name`, `closing_balance`, `period_from`, `period_to` | `get_profit_and_loss` (automatic) |
 | `stock_summary` | `name`, `parent`, `opening_qty`, `closing_qty`, `opening_value`, `closing_value`, `as_of_date` | `get_stock_summary` (automatic) |
 | `balance_sheet` | `group_name`, `amount`, `as_of_date` | `get_balance_sheet` (automatic) |
@@ -109,8 +131,13 @@ query_sql: SELECT SUM(debit_amount), SUM(credit_amount) FROM trial_balance
   up-to-the-minute figures. The six automatic tables carry the same
   caveat — re-call the report tool after switching companies before
   querying it.
-- **Vouchers only carry header-level detail.** No stock item or ledger line
-  breakdown is cached — use `get_vouchers` / `get_ledger_vouchers` for that.
+- **`vouchers` only carries header-level detail.** No stock item or ledger
+  line breakdown is cached there — use `get_vouchers` / `get_ledger_vouchers`
+  for that, or `sync_voucher_items_to_sql` for the inventory line items.
+- **`qty`/`amount` in `voucher_items` are unsigned**, exactly as Tally stores
+  them on the inventory entry — there is no single sign convention across
+  voucher types. Use `is_deemed_positive` together with `voucher_type` to
+  work out inward vs outward movement in a query.
 - **Read-only.** `query_sql` rejects anything that isn't a single `SELECT`
   (see the `DDL_KEYWORDS` guard in `src/db.ts`) — it cannot be used to write
   back to Tally.

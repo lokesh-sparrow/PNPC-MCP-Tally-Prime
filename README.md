@@ -100,7 +100,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (71 total)
+## Available tools (72 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -223,7 +223,8 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 |---|---|---|
 | `sync_to_sql` | — | Pulls ledgers, groups, and stock items into a **session-only, in-memory** SQL cache |
 | `sync_vouchers_to_sql` | `from`, `to` | Pulls voucher headers (date, type, number, party, amount, narration — not line items) for one date range into the same cache. Call it once per chunk (e.g. per quarter) to build up full multi-year history within a session — each call only replaces vouchers in its own date range, so calling it for 2024 then 2025 gives you both |
-| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)` |
+| `sync_voucher_items_to_sql` | `from`, `to` | Pulls voucher **inventory line items** (stock item, qty, rate, amount, godown, batch — one row per item per batch allocation) for one date range into the same cache. This is the raw data for movement analysis, godown-wise stock, and batch detail — there's no separate report tool for those, it's a `query_sql` SELECT over this table. `qty`/`amount` are unsigned as Tally stores them; use `is_deemed_positive` with `voucher_type` to work out inward vs outward |
+| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)`, `voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, is_deemed_positive, godown, batch)` |
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
 `get_trial_balance`, `get_vat_liability_summary`, and

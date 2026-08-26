@@ -153,6 +153,7 @@ operations against vouchers/ledgers.
 |---|---|---|
 | `sync_to_sql` | — | Loads ledgers/groups/stock items into an in-memory SQL cache (PGLite), scoped to this session only |
 | `sync_vouchers_to_sql` | `from`, `to` | Loads voucher headers (no line items) for one date range into the same cache — additive by date range, so calling it repeatedly for different chunks builds up full history within the session |
+| `sync_voucher_items_to_sql` | `from`, `to` | Loads voucher inventory line items (stock item, qty, rate, amount, godown, batch) for one date range into the same cache — the raw data behind movement/godown/ageing analysis, since Tally has no exportable report for those (confirmed live against all 138 registered report names) and per-godown `$ClosingBalance`/`SVGODOWNNAME` scoping doesn't work either (confirmed live). Built on two levels of nested TDL `EXPLODE` (voucher → `AllInventoryEntries` → `BatchAllocations`), confirmed live safe and correct against known ground truth. |
 | `query_sql` | `sql` | Runs a read-only `SELECT` against that cache |
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,

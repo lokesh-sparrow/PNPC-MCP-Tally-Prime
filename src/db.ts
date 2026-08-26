@@ -107,6 +107,23 @@ async function ensureSchema(): Promise<void> {
         period_from DATE,
         period_to DATE
       );
+      CREATE TABLE IF NOT EXISTS voucher_items (
+        id SERIAL PRIMARY KEY,
+        voucher_guid TEXT,
+        date DATE,
+        voucher_type TEXT,
+        voucher_number TEXT,
+        stock_item TEXT,
+        qty NUMERIC,
+        rate TEXT,
+        amount NUMERIC,
+        is_deemed_positive BOOLEAN,
+        godown TEXT,
+        batch TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_voucher_items_date ON voucher_items(date);
+      CREATE INDEX IF NOT EXISTS idx_voucher_items_stock_item ON voucher_items(stock_item);
+      CREATE INDEX IF NOT EXISTS idx_voucher_items_godown ON voucher_items(godown);
     `).then(() => undefined);
   }
   await schemaReady;
@@ -231,6 +248,89 @@ export async function syncVouchers(from: string, to: string): Promise<string> {
     `(cleared when this session ends — sync again next session, or after switching companies). ` +
     `Call again with other date ranges to build up full history for this session — ` +
     `each call only replaces vouchers within its own date range.`
+  );
+}
+
+function syncVoucherItemsXml(fromDate: string, toDate: string): string {
+  return render("sync-voucher-items.xml.njk", { fromDate, toDate });
+}
+
+// Syncs voucher INVENTORY LINE ITEMS (stock item, qty, rate, amount, godown,
+// batch) for one date range into the session-scoped cache — the raw material
+// for movement/godown/ageing analysis, which is just a SQL query over this
+// table (via query_sql) rather than a dedicated report tool. Tally has no
+// exportable "Movement Analysis"/"Stock Ageing Analysis"/"Godown Summary"
+// report reachable over the gateway (confirmed live: none of the 138
+// registered report names for these export real data), and per-godown
+// $ClosingBalance/SVGODOWNNAME scoping doesn't work either (confirmed live
+// against a real test item with real stock in a real godown — both ignored
+// the godown and returned the company-wide total). This walks each voucher's
+// own AllInventoryEntries, then each entry's own BatchAllocations, via two
+// levels of nested TDL EXPLODE — confirmed live safe (no hang) and correct
+// (godown/batch only populate where actually set, verified against known
+// ground truth). Same chunked, additive-by-date-range model as syncVouchers.
+export async function syncVoucherItems(from: string, to: string): Promise<string> {
+  await ensureSchema();
+
+  const xml = syncVoucherItemsXml(toTallyActionDate(from), toTallyActionDate(to));
+  const result = await tallyRequest(xml);
+  const rows = extractRecords(result) as Record<string, unknown>[];
+
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+
+  let itemCount = 0;
+  await db.exec("BEGIN");
+  try {
+    await db.query(
+      "DELETE FROM voucher_items WHERE date >= $1 AND date <= $2",
+      [fromIso, toIso]
+    );
+    for (const v of rows) {
+      const date = parseTallyDate(str(v.DATE) ?? "");
+      if (!date) continue;
+      const rawItems = (v as any).ITEM;
+      if (!rawItems) continue;
+      const items = Array.isArray(rawItems) ? rawItems : [rawItems];
+      for (const item of items) {
+        const rawBatches = item.BATCH;
+        const batches = rawBatches ? (Array.isArray(rawBatches) ? rawBatches : [rawBatches]) : [{}];
+        for (const batch of batches) {
+          itemCount++;
+          await db.query(
+            `INSERT INTO voucher_items
+               (voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, is_deemed_positive, godown, batch)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              str(v.VOUCHER_GUID),
+              date,
+              str(v.VOUCHER_TYPE),
+              str(v.VOUCHER_NUMBER),
+              str(item.STOCK_ITEM),
+              num(item.QTY),
+              str(item.RATE),
+              num(item.AMOUNT),
+              item.IS_DEEMED_POSITIVE === 1 || item.IS_DEEMED_POSITIVE === "1",
+              str(batch.GODOWN) || null,
+              str(batch.BATCH) || null,
+            ]
+          );
+        }
+      }
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+
+  return (
+    `Synced ${itemCount} inventory line items (across ${rows.length} vouchers checked) for ${from} to ${to} ` +
+    `into this session's SQL cache table 'voucher_items' (cleared when this session ends). ` +
+    `Query it directly for movement analysis (SUM(qty) grouped by stock_item/voucher_type/date), ` +
+    `godown-wise stock (GROUP BY godown), or batch-level detail — there is no separate "report" tool for these, ` +
+    `it's just SQL over this table via query_sql. Note: qty/amount are unsigned as Tally stores them — use ` +
+    `is_deemed_positive and voucher_type together to determine inward vs outward direction for movement analysis.`
   );
 }
 
