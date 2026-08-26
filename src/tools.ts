@@ -18,7 +18,14 @@ export const tools = [
   },
   {
     name: "get_vouchers",
-    description: "Get vouchers (Day Book) from TallyPrime filtered by date range",
+    description:
+      "Get vouchers (Day Book) from TallyPrime filtered by date range. Returns a flat array of rows (guid, date, " +
+      "voucher_type, voucher_number, party_ledger, amount, narration) — headers only, no stock item or ledger " +
+      "line detail (use get_ledger_vouchers or query_sql for that). Rebuilt on the same Voucher collection query " +
+      "sync_vouchers_to_sql already uses: an earlier version called Tally's canned 'Day Book' report directly, " +
+      "which was confirmed live to silently ignore the date range entirely (returning the same fixed set " +
+      "regardless of what was requested, even for a year before the company's books start) — this version " +
+      "correctly scopes to the requested range.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1275,10 +1282,10 @@ export const tools = [
       "records the reference. Distinct from create_rejections_out, which has no party/ledger amount at all. " +
       "IMPORTANT (confirmed live): the Delivery Note voucher type must be active in the company first — check in " +
       "Tally's UI (voucher types can be turned off per company) — otherwise the API still reports CREATED:1 " +
-      "even though the voucher won't show up in any report. Also confirmed live: even with the voucher type " +
-      "active, get_vouchers/get_ledger_vouchers/update_voucher/delete_voucher could not find a Delivery Note " +
-      "created this way afterward — if you need to check, update, or delete one, do it directly in Tally's own " +
-      "UI (Day Book, or Alt+G → Delivery Note) rather than through this connector, until that gap is resolved.",
+      "even though the voucher won't show up in any report or be findable by get_vouchers/delete_voucher until " +
+      "the type is turned on. Once active, get_vouchers and delete_voucher find it correctly. " +
+      "get_ledger_vouchers will still never show it, by design, not a gap — that tool deliberately excludes " +
+      "inventory-classified vouchers (see its own description).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1314,10 +1321,9 @@ export const tools = [
       "Create a Receipt Note in TallyPrime — an item-line inventory voucher recording goods received from a " +
       "supplier before or without a full Purchase invoice (e.g. against a Purchase Order). Same item-line shape " +
       "as create_purchase_invoice (stock item, quantity, rate, Purchase ledger per line) but ISINVOICE is set to " +
-      "No and there's no VAT/tax line — mirror of create_delivery_note on the buying side. Same two caveats as " +
-      "create_delivery_note (confirmed live): the voucher type must be active in the company first, and even " +
-      "once active, get_vouchers/get_ledger_vouchers/update_voucher/delete_voucher could not find a Receipt Note " +
-      "created this way — manage it in Tally's own UI instead until that gap is resolved.",
+      "No and there's no VAT/tax line — mirror of create_delivery_note on the buying side. Same caveat as " +
+      "create_delivery_note: the voucher type must be active in the company first, or it won't show up in " +
+      "get_vouchers/delete_voucher until it is. get_ledger_vouchers will still never show it, by design.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2712,10 +2718,24 @@ export async function handleTool(
     }
 
     case "get_vouchers": {
+      // Was built on Tally's canned "Day Book" REPORTNAME — confirmed live
+      // that it silently ignores SVFROMDATE/SVTODATE entirely, always
+      // returning the same fixed set regardless of the requested range (even
+      // a date a year before the company's books start returned the same
+      // count as the full financial year). Rebuilt on the same Voucher
+      // collection query sync_vouchers_to_sql already uses and trusts,
+      // which does respect the date range (confirmed live) — same field set
+      // (date, voucher_type, voucher_number, party_ledger, amount,
+      // narration), a flat row list instead of Tally's raw nested voucher
+      // XML dump.
       const { from, to } = args as { from: string; to: string };
-      const xml = reportXml("Day Book", { SVFROMDATE: from, SVTODATE: to });
+      const xml = render("sync-vouchers.xml.njk", {
+        fromDate: toTallyActionDate(from),
+        toDate: toTallyActionDate(to),
+      });
       const result = await tallyRequest(xml);
-      return JSON.stringify(cleanTallyResult(result), null, 2);
+      const rows = extractRecords(result) as Record<string, unknown>[];
+      return JSON.stringify({ rows }, null, 2);
     }
 
     case "get_company_info": {

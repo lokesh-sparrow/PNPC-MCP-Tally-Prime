@@ -288,32 +288,49 @@ building them would need collection-based reconstruction (the same
 technique `get_stock_summary` and the VAT/GST tools use), not a report
 name, and hasn't been attempted yet.
 
-## Delivery Note / Receipt Note: created but invisible to everything else
+## `get_vouchers` used to ignore its own date range (fixed)
 
-Confirmed live on a real company: `create_delivery_note`/`create_receipt_note`
-reported `CREATED:1` with no errors, and the resulting voucher genuinely
-moved stock in the right direction (verified via `get_stock_summary`) — but
-neither voucher showed up in `get_vouchers` (Day Book), `get_ledger_vouchers`
-for the party ledger, or `delete_voucher`'s own lookup used to find a
-voucher to update/delete. The company's Delivery Note/Receipt Note voucher
-type turned out to be inactive at the time of creation — a company-level
-setting, same category of prerequisite as `set_bill_of_materials`'s "Set
-Components List" toggle. Turning the voucher type on afterward did **not**
-retroactively make the already-created voucher visible to any of those
-three tools either — the only way found to locate and delete it was
-directly in Tally's own UI (Day Book, or Alt+G → Delivery Note/Receipt
-Note).
+`get_vouchers` was originally built on Tally's canned "Day Book"
+REPORTNAME (`reportXml("Day Book", ...)`). Confirmed live: it silently
+ignored `SVFROMDATE`/`SVTODATE` entirely — the same fixed set of vouchers
+came back regardless of the requested range, including a date a year
+before the company's books even start. This was discovered while
+investigating a separate report that a Delivery Note/Receipt Note created
+via this connector didn't show up in `get_vouchers` — the real cause
+turned out to be this date-range bug, not anything specific to those two
+voucher types.
 
-**Practical upshot:** before using either tool, confirm the voucher type is
-active in Tally (check by trying to create one manually in Tally's UI
-first). Once created via this connector, treat it as something you can only
-review/edit/delete through Tally's own UI — not through `get_vouchers`,
-`get_ledger_vouchers`, `update_voucher`, or `delete_voucher`. This is an
-open gap, not an intentional design choice — revisit `get_vouchers`/
-`get_ledger_vouchers`'s underlying report/collection queries if this needs
-fixing (Tally's canned "Day Book" report may need a different filter
-configuration for these voucher types than what the reports/registers use
-by default).
+Fixed by rebuilding `get_vouchers` on the same Voucher collection query
+`sync_vouchers_to_sql` already uses and trusts (a `TYPE=Collection`/
+`TYPE=Voucher` query with `SVFROMDATE`/`SVTODATE`, not a canned
+`REPORTNAME`) — confirmed live this correctly scopes to the requested
+range (0 results for a year with no vouchers, the right count for a single
+month, 7608 for the full year vs. the old broken tool's fixed 105).
+
+**Likely root cause, and a real open risk for other report tools:** Tally's
+currently active **Period** (F2 in the UI, or whatever `set_period` last
+set) can constrain what a canned `REPORTNAME` report returns, independent
+of the `SVFROMDATE`/`SVTODATE` passed in the request — a `TYPE=Collection`
+query, like the one `get_vouchers` now uses, doesn't have this dependency
+(confirmed: it correctly returned 0 for 2023 even though Milan Plus's
+active period was FY2024). `get_cash_flow`, `get_funds_flow`,
+`get_ratio_analysis`, `get_sales_register`, `get_purchase_register`,
+`get_journal_register`, `get_payment_register`, `get_receipts_and_payments`,
+`get_reorder_status`, `get_balance_sheet`, `get_trial_balance`,
+`get_bills_receivable`, and `get_bills_payable` all still use the canned
+`REPORTNAME` mechanism — they were only tested with date ranges *inside*
+the currently active period, not across a period boundary. If one of these
+returns suspiciously unchanged results across genuinely different date
+ranges, check Tally's active period first (**Alt+F2** in Tally, or set it
+wide via this connector's `set_period`) before assuming the data itself is
+wrong.
+
+Now that `get_vouchers` is fixed, `delete_voucher` also correctly finds a
+Delivery Note/Receipt Note once its voucher type is active in the company
+(confirmed live) — see `create_delivery_note`'s own tool description for
+that remaining prerequisite. `get_ledger_vouchers` will still never show
+either voucher type, but that's by design (it deliberately excludes
+inventory-classified vouchers), not a gap.
 
 ## Verified-live tools
 
