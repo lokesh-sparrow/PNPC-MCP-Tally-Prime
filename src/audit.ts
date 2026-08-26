@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync, openSync, closeSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,22 +35,87 @@ export function setActiveCompany(name: string | null): void {
   activeCompany = name;
 }
 
-const MAX_AUDIT_LOG_BYTES = 50 * 1024 * 1024; // 50MB safety valve — see runPrune below.
+const MAX_AUDIT_LOG_BYTES = 50 * 1024 * 1024; // 50MB safety valve — see runPruneCore below.
+
+// TALLY_AUDIT_LOG_PATH is documented as shareable across multiple connector
+// instances pointed at the same file. runPruneCore does a read-then-rewrite
+// of the whole file with no OS-level atomicity guarantee across that gap —
+// without a lock, one process's prune could read the file, another process
+// could append an entry, and the first process's rewrite would silently
+// clobber that entry when it writes back its (now stale) view. This lock
+// file serializes the read-modify-write around both appends and prunes
+// across processes sharing one log path.
+const LOCK_PATH = AUDIT_LOG_PATH + ".lock";
+const LOCK_STALE_MS = 10_000; // a lock this old means its owner crashed without cleaning up — safe to steal.
+const LOCK_RETRY_MS = 20;
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Runs fn() with a cross-process exclusive lock held. This call happens
+// after the Tally operation it's recording has already completed (see
+// server.ts) — it only delays this response reaching the caller, so it's
+// safe to retry indefinitely rather than give up and run unlocked, which
+// would silently reopen the exact race this exists to prevent. The only
+// way out of a stuck lock is LOCK_STALE_MS: if its owner crashed without
+// releasing it, any waiter eventually steals it and proceeds normally.
+function withLock<T>(fn: () => T): T {
+  for (;;) {
+    let fd: number;
+    try {
+      fd = openSync(LOCK_PATH, "wx"); // atomic create-if-absent
+    } catch (err) {
+      // Windows can throw EPERM (not EEXIST) for a brief moment right after
+      // another process unlinks the lock file and before the filesystem
+      // settles — confirmed live under concurrent load, where treating only
+      // EEXIST as "retry" and anything else as fatal silently dropped audit
+      // entries. Any failure to acquire is treated the same way: check for
+      // staleness, then retry — never propagate and never proceed unlocked.
+      try {
+        if (Date.now() - statSync(LOCK_PATH).mtimeMs > LOCK_STALE_MS) {
+          try {
+            unlinkSync(LOCK_PATH);
+          } catch {
+            // Someone else already stole it — just retry the loop.
+          }
+        }
+      } catch {
+        // Lock file doesn't exist (e.g. mid-release) or stat failed transiently — just retry.
+      }
+      sleepSync(LOCK_RETRY_MS);
+      continue;
+    }
+    try {
+      closeSync(fd);
+      return fn();
+    } finally {
+      try {
+        unlinkSync(LOCK_PATH);
+      } catch {
+        // Already gone (e.g. stolen as stale by another process) — fine.
+      }
+    }
+  }
+}
 
 // Fire-and-forget by design: a logging failure (disk full, permissions) must
 // never block the underlying Tally operation this entry is recording.
 export function appendAuditEntry(entry: Omit<AuditEntry, "company">): void {
   try {
     mkdirSync(dirname(AUDIT_LOG_PATH), { recursive: true });
-    const full: AuditEntry = { ...entry, company: activeCompany };
-    appendFileSync(AUDIT_LOG_PATH, JSON.stringify(full) + "\n", "utf8");
+    withLock(() => {
+      const full: AuditEntry = { ...entry, company: activeCompany };
+      appendFileSync(AUDIT_LOG_PATH, JSON.stringify(full) + "\n", "utf8");
 
-    // Cheap metadata check (no file content read) on every write, so a
-    // long-lived process (this connector can run for weeks under Claude
-    // Desktop without restarting) doesn't have to wait for its next restart
-    // before the 90-day policy gets a chance to shrink the file back down.
-    const size = statSync(AUDIT_LOG_PATH).size;
-    if (size >= MAX_AUDIT_LOG_BYTES) runPrune();
+      // Cheap metadata check (no file content read) on every write, so a
+      // long-lived process (this connector can run for weeks under Claude
+      // Desktop without restarting) doesn't have to wait for its next restart
+      // before the 90-day policy gets a chance to shrink the file back down.
+      // Calls the unlocked core directly — we're already holding the lock.
+      const size = statSync(AUDIT_LOG_PATH).size;
+      if (size >= MAX_AUDIT_LOG_BYTES) runPruneCore();
+    });
   } catch {
     // Swallowed intentionally — see comment above.
   }
@@ -66,7 +131,12 @@ const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 // offers no cheaper way to drop individual lines. Never blows away recent
 // entries just because the file is large; it only ever removes entries
 // actually past the 90-day cutoff.
-function runPrune(): void {
+//
+// Unlocked on purpose — callers must hold the lock from withLock before
+// calling this, since the read-then-rewrite here is exactly the race
+// withLock exists to prevent. Never call this directly from outside this
+// file; use pruneAuditLog() (startup) or let appendAuditEntry trigger it.
+function runPruneCore(): void {
   try {
     if (!existsSync(AUDIT_LOG_PATH)) return;
     const lines = readFileSync(AUDIT_LOG_PATH, "utf8").split("\n").filter((l) => l.trim() !== "");
@@ -102,7 +172,11 @@ let hasPrunedOnStartup = false;
 export function pruneAuditLog(): void {
   if (hasPrunedOnStartup) return;
   hasPrunedOnStartup = true;
-  runPrune();
+  try {
+    withLock(runPruneCore);
+  } catch {
+    // Never let pruning failure block startup.
+  }
 }
 
 export type AuditLogFilter = {

@@ -254,7 +254,7 @@ first when debugging "is this even the right port" instead of a raw
 `get_company_info` call, whose failure mode here would be a confusing
 JSON-parse-of-garbage result rather than a clear answer.
 
-## Verified-live tools with one remaining open question
+## Verified-live tools
 
 `set_bill_of_materials`, `create_material_in`, `create_material_out`,
 `create_rejections_in`, and `create_rejections_out` were originally built
@@ -266,9 +266,15 @@ balance against the inventory legs (job-work memorandum tracking, not a
 real Dr/Cr pair) — don't mistake this for a bug if the numbers don't net to
 zero the way a normal voucher would.
 
-One thing remains genuinely unverified: `set_bill_of_materials`'s
-`natureOfItem` accepted values — check the resulting BOM in Tally's own UI
-if you pass this field.
+`set_bill_of_materials`'s `natureOfItem` values (`Component`, `Co-Product`,
+`By-Product`, `Scrap`) were each checked against Tally's own BoM screen
+("Set Components (BoM)" → click into a component line) — all four map to
+the matching "Type of Item" label there. That screen (and its "Type of
+Item" column) only appears once the company has "Set Components List
+(Bill of Materials) in Stock Items" turned on — Alter Stock Item → F12 →
+that setting → Yes. The underlying write succeeds either way; without
+that setting on, Tally's UI just won't show a Components field to look
+at it with.
 
 **Job Work In/Out Order vouchers were deliberately not built** — no
 verified real-world XML example was found, and there's no existing
