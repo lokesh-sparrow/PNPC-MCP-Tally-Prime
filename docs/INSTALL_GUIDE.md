@@ -39,7 +39,7 @@ package — they're only needed to compile `dist/`, not to run it.
    just links out to a directory or GitHub.
 4. Select `PNPC-MCP-Tally-Prime.mcpb`.
 5. You should see an install/confirmation screen listing the tools
-   (68 as of the current release), a **Tally Gateway URL** field (leave it
+   (71 as of the current release), a **Tally Gateway URL** field (leave it
    as `http://localhost:9000` unless Tally's XML gateway runs on a
    different port on your machine), a **Read-only mode** toggle (on by
    default — this connector can only look until you deliberately turn it

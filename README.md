@@ -100,7 +100,7 @@ instance running on your local PC, the server can run as a small web
 service with OAuth-protected access instead. This is more involved —
 see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
 
-## Available tools (68 total)
+## Available tools (71 total)
 
 Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
@@ -160,6 +160,9 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `create_receipt_note` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `purchaseLedger`, `godown?`, `batchName?`, `discountPercent?`), `voucherNumber?` | Creates a Receipt Note — buying-side mirror of `create_delivery_note`, same caveats |
 | `create_sales_order` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `dueDate`, `godown?`, `batchName?`, `discountPercent?`), `orderNumber`, `voucherNumber?` | Creates a Sales Order — a future commitment to sell, no stock/ledger movement yet. `orderNumber` and each item's `dueDate` are required (Tally rejects an Order-class voucher without them). Same voucher-type-active caveat as `create_delivery_note`. Tally silently reassigns its own voucher number for Order-class vouchers regardless of what's passed — check the real number via `get_vouchers` after creating one |
 | `create_purchase_order` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `purchaseLedger`, `dueDate`, `godown?`, `batchName?`, `discountPercent?`), `orderNumber`, `voucherNumber?` | Creates a Purchase Order — buying-side mirror of `create_sales_order`, same caveats |
+| `create_sales_quotation` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `salesLedger`, `godown?`, `batchName?`, `discountPercent?`), `voucherNumber?` | Creates a Sales Quotation — a pre-order price quote, one step before `create_sales_order`. Same voucher-type-active caveat |
+| `create_job_work_in_order` | `date`, `narration?`, `partyLedger`, `items` (array of `stockItem`, `qty`, `rate`, `unit`, `dueDate`, `godown?`, `batchName?`, `components` — array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `orderNumber`, `voucherNumber?` | Creates a Job Work In Order — this company is the job worker, booking an order to process raw materials a customer will supply into a finished item delivered back. Each item's `components` list is the raw material the customer is expected to supply. `orderNumber` and each item's `dueDate` are required |
+| `create_job_work_out_order` | Same fields as `create_job_work_in_order` | Creates a Job Work Out Order — mirror image: this company is the principal, sending raw materials (each item's `components`) out to a job worker and expecting a finished item back |
 | `create_physical_stock` | `date`, `narration?`, `items` (array of `stockItem`, `actualQty`, `unit`, `godown?`, `batchName?`), `voucherNumber?` | Creates a Physical Stock voucher — updates the item's book quantity to match a physical count (that's the point of the voucher). Counting 95 of an item with 100 in stock closes it at 95. Doesn't post any monetary write-off for the shortage/excess value itself — see [Troubleshooting](docs/TROUBLESHOOTING.md) if you're on an older build than this |
 | `update_physical_stock` | Same fields as `create_physical_stock`, plus required `voucherNumber` | Replaces an existing Physical Stock voucher's counted lines in place |
 

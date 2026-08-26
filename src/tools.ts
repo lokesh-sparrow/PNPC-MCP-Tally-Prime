@@ -1446,6 +1446,161 @@ export const tools = [
     },
   },
   {
+    name: "create_job_work_in_order",
+    description:
+      "Create a Job Work In Order in TallyPrime — used when this company is the job worker, booking an order to " +
+      "process raw materials a customer will supply, into a finished item the company will deliver back. Each " +
+      "item line is the finished item expected to be delivered eventually, plus a nested list of components — " +
+      "the raw materials the customer is expected to supply for that item. Reverse-engineered from a real " +
+      "manually-created Job Work In Order's own export (same technique used for Sales Order): the component list " +
+      "lives nested two levels deep, inside each item's own order allocation (VOUCHERCOMPONENTLIST.LIST inside " +
+      "BATCHALLOCATIONS.LIST inside ALLINVENTORYENTRIES.LIST), each component carrying its own nested " +
+      "BATCHALLOCATIONS.LIST with a PARENTITEM back-reference to the item it belongs to. Confirmed live: this " +
+      "structure creates cleanly (no VAT/tax lines, no per-item ledger allocation — just the one balancing party " +
+      "ledger entry for the total). Same voucher-type-active prerequisite as other Order-class vouchers, and " +
+      "orderNumber + each item's dueDate are REQUIRED (same reasoning as create_sales_order). Distinct from " +
+      "create_job_work_out_order, which is for the opposite direction (sending materials out to a job worker).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Order date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name (the principal who is giving this job work order)" },
+        items: {
+          type: "array",
+          description: "One entry per finished item this company will deliver back to the customer.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the finished/output stock item to be delivered" },
+              qty: { type: "number", description: "Quantity of the finished item expected" },
+              rate: { type: "number", description: "Rate per unit of the finished item" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED — same 'Due Date of Order' requirement as Sales Order/Purchase Order." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              components: {
+                type: "array",
+                description: "Raw materials the customer is expected to supply for this finished item.",
+                items: {
+                  type: "object",
+                  properties: {
+                    stockItem: { type: "string", description: "Exact name of the raw material stock item" },
+                    qty: { type: "number", description: "Quantity of raw material expected from the customer" },
+                    rate: { type: "number", description: "Rate per unit of the raw material" },
+                    unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+                  },
+                  required: ["stockItem", "qty", "rate", "unit"],
+                },
+              },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "dueDate", "components"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber." },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+      },
+      required: ["date", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
+    name: "create_job_work_out_order",
+    description:
+      "Create a Job Work Out Order in TallyPrime — used when this company is the principal, sending raw " +
+      "materials out to a job worker (subcontractor) and expecting a finished item back. Mirror image of " +
+      "create_job_work_in_order: each item line is the finished item expected to be received from the job " +
+      "worker, plus a nested list of components — the raw materials this company will send out for that item. " +
+      "Same nested XML structure as create_job_work_in_order, with the accounting direction flipped (matching " +
+      "the existing Sales-side vs Purchase-side sign convention already used by create_sales_order vs " +
+      "create_purchase_order in this connector) since this voucher represents an inward expected receipt rather " +
+      "than an outward delivery. Confirmed live: creates cleanly with no exceptions. Same voucher-type-active " +
+      "prerequisite and required orderNumber/dueDate as create_job_work_in_order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Order date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Job worker (subcontractor) ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per finished item expected back from the job worker.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the finished/output stock item expected back" },
+              qty: { type: "number", description: "Quantity of the finished item expected" },
+              rate: { type: "number", description: "Rate per unit of the finished item" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              components: {
+                type: "array",
+                description: "Raw materials this company will send out to the job worker for this finished item.",
+                items: {
+                  type: "object",
+                  properties: {
+                    stockItem: { type: "string", description: "Exact name of the raw material stock item" },
+                    qty: { type: "number", description: "Quantity of raw material to be sent out" },
+                    rate: { type: "number", description: "Rate per unit of the raw material" },
+                    unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+                  },
+                  required: ["stockItem", "qty", "rate", "unit"],
+                },
+              },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "dueDate", "components"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber." },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+      },
+      required: ["date", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
+    name: "create_sales_quotation",
+    description:
+      "Create a Sales Quotation in TallyPrime — a pre-order price quote to a prospective customer, one step " +
+      "before create_sales_order. Same item-line shape as create_sales_order but no orderNumber/dueDate — a " +
+      "quotation isn't a firm commitment, so Tally doesn't require the Order No./Due Date of Order fields that " +
+      "Sales Order needs. Same voucher-type-active prerequisite as create_delivery_note (confirmed live pattern " +
+      "for every Order/inventory-class voucher type) — check it's on in the company before relying on this. " +
+      "Follow up with create_sales_order once the customer accepts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Quotation date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Prospective customer ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity quoted" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
     name: "create_group",
     description:
       "Create a new account group in TallyPrime, nested under a parent group, or rename/reparent an existing one " +
@@ -2172,6 +2327,104 @@ function createSalesOrderXml(args: {
     partyLedger: args.partyLedger,
     items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
     partyAmount,
+    orderNumber: args.orderNumber,
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createSalesQuotationXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string })[];
+  voucherNumber?: string;
+}): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("create-sales-quotation.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+type JobWorkComponentInput = {
+  stockItem: string;
+  qty: number;
+  rate: number;
+  unit: string;
+  godown?: string;
+  batchName?: string;
+};
+
+type JobWorkItemInput = {
+  stockItem: string;
+  qty: number;
+  rate: number;
+  unit: string;
+  dueDate: string;
+  godown?: string;
+  batchName?: string;
+  components: JobWorkComponentInput[];
+};
+
+function computeJobWorkItems(items: JobWorkItemInput[], dueDates: string[]) {
+  return items.map((item, i) => ({
+    ...item,
+    amount: item.qty * item.rate,
+    batchName: item.batchName ?? "Primary Batch",
+    dueDate: dueDates[i],
+    components: item.components.map((c) => ({
+      ...c,
+      amount: c.qty * c.rate,
+      batchName: c.batchName ?? "Primary Batch",
+    })),
+  }));
+}
+
+function createJobWorkInOrderXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: JobWorkItemInput[];
+  orderNumber: string;
+  voucherNumber?: string;
+}): string {
+  const items = computeJobWorkItems(
+    args.items,
+    args.items.map((i) => toTallyActionDate(i.dueDate))
+  );
+  return render("create-job-work-in-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    totalAmount: items.reduce((s, i) => s + i.amount, 0),
+    orderNumber: args.orderNumber,
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createJobWorkOutOrderXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: JobWorkItemInput[];
+  orderNumber: string;
+  voucherNumber?: string;
+}): string {
+  const items = computeJobWorkItems(
+    args.items,
+    args.items.map((i) => toTallyActionDate(i.dueDate))
+  );
+  return render("create-job-work-out-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    totalAmount: items.reduce((s, i) => s + i.amount, 0),
     orderNumber: args.orderNumber,
     voucherNumber: args.voucherNumber,
   });
@@ -3476,6 +3729,27 @@ export async function handleTool(
     case "create_purchase_order": {
       const orderArgs = args as Parameters<typeof createPurchaseOrderXml>[0];
       const xml = createPurchaseOrderXml(orderArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_job_work_in_order": {
+      const jwArgs = args as Parameters<typeof createJobWorkInOrderXml>[0];
+      const xml = createJobWorkInOrderXml(jwArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_job_work_out_order": {
+      const jwArgs = args as Parameters<typeof createJobWorkOutOrderXml>[0];
+      const xml = createJobWorkOutOrderXml(jwArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_sales_quotation": {
+      const quoteArgs = args as Parameters<typeof createSalesQuotationXml>[0];
+      const xml = createSalesQuotationXml(quoteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
