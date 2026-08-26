@@ -1566,11 +1566,11 @@ export const tools = [
     name: "create_sales_quotation",
     description:
       "Create a Sales Quotation in TallyPrime — a pre-order price quote to a prospective customer, one step " +
-      "before create_sales_order. Same item-line shape as create_sales_order but no orderNumber/dueDate — a " +
-      "quotation isn't a firm commitment, so Tally doesn't require the Order No./Due Date of Order fields that " +
-      "Sales Order needs. Same voucher-type-active prerequisite as create_delivery_note (confirmed live pattern " +
-      "for every Order/inventory-class voucher type) — check it's on in the company before relying on this. " +
-      "Follow up with create_sales_order once the customer accepts.",
+      "before create_sales_order. Same item-line shape as create_sales_order, including the same orderNumber " +
+      "(REFERENCE) and per-item dueDate requirements — confirmed live that Tally classifies Sales Quotation as " +
+      "an Order-class voucher (PARENT 'Sales Order' in get_voucher_types) and rejects it the same way without " +
+      "them. Same voucher-type-active prerequisite as create_delivery_note. Follow up with create_sales_order " +
+      "once the customer accepts.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1588,16 +1588,18 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
+              dueDate: { type: "string", description: "Expected validity/delivery date for this line, DD-MM-YYYY. REQUIRED — same 'Due Date of Order' requirement as create_sales_order." },
               godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
-            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger", "dueDate"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber." },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
       },
-      required: ["date", "partyLedger", "items"],
+      required: ["date", "partyLedger", "items", "orderNumber"],
     },
   },
   {
@@ -2336,7 +2338,8 @@ function createSalesQuotationXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
-  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string })[];
+  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string; dueDate: string })[];
+  orderNumber: string;
   voucherNumber?: string;
 }): string {
   const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
@@ -2344,8 +2347,9 @@ function createSalesQuotationXml(args: {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
-    items,
+    items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
     partyAmount,
+    orderNumber: args.orderNumber,
     voucherNumber: args.voucherNumber,
   });
 }
