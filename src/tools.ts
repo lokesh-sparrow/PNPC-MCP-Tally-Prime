@@ -1266,6 +1266,88 @@ export const tools = [
     },
   },
   {
+    name: "create_delivery_note",
+    description:
+      "Create a Delivery Note in TallyPrime — an item-line inventory voucher recording goods dispatched to a " +
+      "customer before or without a full Sales invoice (e.g. against a Sales Order). Same item-line shape as " +
+      "create_sales_invoice (stock item, quantity, rate, Sales ledger per line) but ISINVOICE is set to No and " +
+      "there's no VAT/tax line — a Delivery Note doesn't invoice the customer, it just moves stock out and " +
+      "records the reference. Distinct from create_rejections_out, which has no party/ledger amount at all. " +
+      "IMPORTANT (confirmed live): the Delivery Note voucher type must be active in the company first — check in " +
+      "Tally's UI (voucher types can be turned off per company) — otherwise the API still reports CREATED:1 " +
+      "even though the voucher won't show up in any report. Also confirmed live: even with the voucher type " +
+      "active, get_vouchers/get_ledger_vouchers/update_voucher/delete_voucher could not find a Delivery Note " +
+      "created this way afterward — if you need to check, update, or delete one, do it directly in Tally's own " +
+      "UI (Day Book, or Alt+G → Delivery Note) rather than through this connector, until that gap is resolved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Delivery date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity dispatched" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to, e.g. 'Sales Accounts'" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "create_receipt_note",
+    description:
+      "Create a Receipt Note in TallyPrime — an item-line inventory voucher recording goods received from a " +
+      "supplier before or without a full Purchase invoice (e.g. against a Purchase Order). Same item-line shape " +
+      "as create_purchase_invoice (stock item, quantity, rate, Purchase ledger per line) but ISINVOICE is set to " +
+      "No and there's no VAT/tax line — mirror of create_delivery_note on the buying side. Same two caveats as " +
+      "create_delivery_note (confirmed live): the voucher type must be active in the company first, and even " +
+      "once active, get_vouchers/get_ledger_vouchers/update_voucher/delete_voucher could not find a Receipt Note " +
+      "created this way — manage it in Tally's own UI instead until that gap is resolved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Receipt date in DD-MM-YYYY format" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Supplier ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity received" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to, e.g. 'Purchase Accounts'" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
+          },
+        },
+        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
+      },
+      required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
     name: "create_group",
     description:
       "Create a new account group in TallyPrime, nested under a parent group, or rename/reparent an existing one " +
@@ -1939,6 +2021,42 @@ function computeAdditionalCosts(costs: AdditionalCostInput[] | undefined) {
     ...cost,
     allocationType: cost.allocationType ?? "Appropriate by Value",
   }));
+}
+
+function createDeliveryNoteXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string })[];
+  voucherNumber?: string;
+}): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("create-delivery-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    voucherNumber: args.voucherNumber,
+  });
+}
+
+function createReceiptNoteXml(args: {
+  date: string;
+  narration?: string;
+  partyLedger: string;
+  items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { purchaseLedger: string })[];
+  voucherNumber?: string;
+}): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("create-receipt-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+    voucherNumber: args.voucherNumber,
+  });
 }
 
 function createStockJournalXml(args: {
@@ -3173,6 +3291,20 @@ export async function handleTool(
       const noteArgs = args as Parameters<typeof updateDebitNoteXml>[0];
       await assertVoucherUnambiguous("Debit Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = updateDebitNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_delivery_note": {
+      const noteArgs = args as Parameters<typeof createDeliveryNoteXml>[0];
+      const xml = createDeliveryNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "create_receipt_note": {
+      const noteArgs = args as Parameters<typeof createReceiptNoteXml>[0];
+      const xml = createReceiptNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }

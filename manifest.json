@@ -97,6 +97,8 @@
     { "name": "update_credit_note", "description": "Update an existing item-invoice Credit Note in TallyPrime" },
     { "name": "create_debit_note", "description": "Create an item-invoice Debit Note (Purchase return) in TallyPrime" },
     { "name": "update_debit_note", "description": "Update an existing item-invoice Debit Note in TallyPrime" },
+    { "name": "create_delivery_note", "description": "Create a Delivery Note (goods dispatched before/without invoicing) in TallyPrime" },
+    { "name": "create_receipt_note", "description": "Create a Receipt Note (goods received before/without invoicing) in TallyPrime" },
     { "name": "create_group", "description": "Create a new account group in TallyPrime, or rename/reparent an existing one by passing oldName" },
     { "name": "create_stock_group", "description": "Create a new Stock Group in TallyPrime, nested under a parent stock group" },
     { "name": "create_unit", "description": "Create a new simple or compound Unit of Measure in TallyPrime" },

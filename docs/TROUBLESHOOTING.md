@@ -288,6 +288,33 @@ building them would need collection-based reconstruction (the same
 technique `get_stock_summary` and the VAT/GST tools use), not a report
 name, and hasn't been attempted yet.
 
+## Delivery Note / Receipt Note: created but invisible to everything else
+
+Confirmed live on a real company: `create_delivery_note`/`create_receipt_note`
+reported `CREATED:1` with no errors, and the resulting voucher genuinely
+moved stock in the right direction (verified via `get_stock_summary`) — but
+neither voucher showed up in `get_vouchers` (Day Book), `get_ledger_vouchers`
+for the party ledger, or `delete_voucher`'s own lookup used to find a
+voucher to update/delete. The company's Delivery Note/Receipt Note voucher
+type turned out to be inactive at the time of creation — a company-level
+setting, same category of prerequisite as `set_bill_of_materials`'s "Set
+Components List" toggle. Turning the voucher type on afterward did **not**
+retroactively make the already-created voucher visible to any of those
+three tools either — the only way found to locate and delete it was
+directly in Tally's own UI (Day Book, or Alt+G → Delivery Note/Receipt
+Note).
+
+**Practical upshot:** before using either tool, confirm the voucher type is
+active in Tally (check by trying to create one manually in Tally's UI
+first). Once created via this connector, treat it as something you can only
+review/edit/delete through Tally's own UI — not through `get_vouchers`,
+`get_ledger_vouchers`, `update_voucher`, or `delete_voucher`. This is an
+open gap, not an intentional design choice — revisit `get_vouchers`/
+`get_ledger_vouchers`'s underlying report/collection queries if this needs
+fixing (Tally's canned "Day Book" report may need a different filter
+configuration for these voucher types than what the reports/registers use
+by default).
+
 ## Verified-live tools
 
 `set_bill_of_materials`, `create_material_in`, `create_material_out`,
