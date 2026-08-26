@@ -307,23 +307,32 @@ Fixed by rebuilding `get_vouchers` on the same Voucher collection query
 range (0 results for a year with no vouchers, the right count for a single
 month, 7608 for the full year vs. the old broken tool's fixed 105).
 
-**Likely root cause, and a real open risk for other report tools:** Tally's
-currently active **Period** (F2 in the UI, or whatever `set_period` last
-set) can constrain what a canned `REPORTNAME` report returns, independent
-of the `SVFROMDATE`/`SVTODATE` passed in the request — a `TYPE=Collection`
-query, like the one `get_vouchers` now uses, doesn't have this dependency
-(confirmed: it correctly returned 0 for 2023 even though Milan Plus's
-active period was FY2024). `get_cash_flow`, `get_funds_flow`,
-`get_ratio_analysis`, `get_sales_register`, `get_purchase_register`,
-`get_journal_register`, `get_payment_register`, `get_receipts_and_payments`,
-`get_reorder_status`, `get_balance_sheet`, `get_trial_balance`,
-`get_bills_receivable`, and `get_bills_payable` all still use the canned
-`REPORTNAME` mechanism — they were only tested with date ranges *inside*
-the currently active period, not across a period boundary. If one of these
-returns suspiciously unchanged results across genuinely different date
-ranges, check Tally's active period first (**Alt+F2** in Tally, or set it
-wide via this connector's `set_period`) before assuming the data itself is
-wrong.
+**Likely root cause:** Tally's currently active **Period** (F2 in the UI,
+or whatever `set_period` last set) can constrain what a canned `REPORTNAME`
+report returns, independent of the `SVFROMDATE`/`SVTODATE` passed in the
+request — a `TYPE=Collection` query, like the one `get_vouchers` now uses,
+doesn't have this dependency (confirmed: it correctly returned 0 for 2023
+even though Milan Plus's active period was FY2024).
+
+This raised a real question about the other 9 report tools built the same
+session (`get_cash_flow`, `get_funds_flow`, `get_ratio_analysis`,
+`get_sales_register`, `get_purchase_register`, `get_journal_register`,
+`get_payment_register`, `get_receipts_and_payments`, `get_reorder_status`)
+— they all still use the same canned-`REPORTNAME` mechanism the broken Day
+Book used, and had only been checked with date ranges *inside* the
+currently active period. Checked live: requesting 2023 (fully outside
+Milan Plus's active FY2024 period) on each of the 8 period-based ones
+correctly returned genuinely null/empty data, distinct from their 2024
+results — not the "same fixed wrong answer regardless of range" pattern
+Day Book had. `get_reorder_status` returned identical results for 2023 and
+2024, but that's expected and correct: it's a point-in-time stock snapshot
+(current quantity vs. configured reorder level), not a period-transaction
+report, so it has no reason to vary with the requested range at all. None
+of the 9 have Day Book's bug. `get_balance_sheet`, `get_trial_balance`,
+`get_bills_receivable`, and `get_bills_payable` (pre-existing, not built
+this session) haven't been re-checked against an out-of-period range —
+worth the same test if one of them is ever suspected of returning stale
+data across a period boundary.
 
 Now that `get_vouchers` is fixed, `delete_voucher` also correctly finds a
 Delivery Note/Receipt Note once its voucher type is active in the company
