@@ -45,7 +45,6 @@ Get the latest release — no cloning or building required:
 | Claude web (claude.ai) | — | ✔️ |
 | ChatGPT (Developer Mode) | — | ✔️ |
 | Grok | — | ✔️ |
-| Perplexity Desktop / other stdio-config MCP clients | ✔️ | — |
 
 (Remote/cloud deployment is possible via the HTTP entry point — see
 [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) and
@@ -80,7 +79,7 @@ visible happens), see **Troubleshooting** below — clone this repo, run
 then use `Install Unpacked Extension` on the same screen, pointed at the repo
 folder itself.
 
-### Other MCP clients (no `.mcpb` support — Perplexity Desktop, etc.)
+### Other MCP clients (no `.mcpb` support)
 
 Clients without a one-click extension format read a plain JSON config
 pointing at the built server directly. First clone this repo and run
