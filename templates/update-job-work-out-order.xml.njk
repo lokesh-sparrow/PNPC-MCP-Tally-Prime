@@ -1,0 +1,73 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Job Work Out Order" ACTION="Alter" OBJVIEW="Invoice Voucher View">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Job Work Out Order</VOUCHERTYPENAME>
+            <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
+            <ISINVOICE>No</ISINVOICE>
+            <REFERENCE>{{ orderNumber }}</REFERENCE>
+            <NARRATION>{{ narration }}</NARRATION>
+            <PARTYNAME>{{ partyLedger }}</PARTYNAME>
+            <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            {% for item in items %}<ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              <COMPONENTLISTTYPE>Track Components</COMPONENTLISTTYPE>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISTRACKCOMPONENT>Yes</ISTRACKCOMPONENT>
+              <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
+              <AMOUNT>-{{ item.amount }}</AMOUNT>
+              <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
+              <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                {% if item.godown %}<GODOWNNAME>{{ item.godown }}</GODOWNNAME>
+                <DESTINATIONGODOWNNAME>{{ item.godown }}</DESTINATIONGODOWNNAME>{% endif %}
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
+                <ORDERTYPE>JobOrder</ORDERTYPE>
+                <ORDERNO>{{ orderNumber }}</ORDERNO>
+                <AMOUNT>-{{ item.amount }}</AMOUNT>
+                <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
+                <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
+                <ORDERDUEDATE>{{ item.dueDate }}</ORDERDUEDATE>
+                {% for c in item.components %}<VOUCHERCOMPONENTLIST.LIST>
+                  <STOCKITEMNAME>{{ c.stockItem }}</STOCKITEMNAME>
+                  <NATUREOFCOMPONENT>Pending to Issue</NATUREOFCOMPONENT>
+                  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                  <ISTRACKCOMPONENT>No</ISTRACKCOMPONENT>
+                  <RATE>{{ c.rate }}/{{ c.unit }}</RATE>
+                  <AMOUNT>{{ c.amount }}</AMOUNT>
+                  <ACTUALQTY> {{ c.qty }} {{ c.unit }}</ACTUALQTY>
+                  <BILLEDQTY> {{ c.qty }} {{ c.unit }}</BILLEDQTY>
+                  <BATCHALLOCATIONS.LIST>
+                    {% if c.godown %}<GODOWNNAME>{{ c.godown }}</GODOWNNAME>{% endif %}
+                    <BATCHNAME>{{ c.batchName }}</BATCHNAME>
+                    <ORDERTYPE>SubOrder</ORDERTYPE>
+                    <PARENTITEM>{{ item.stockItem }}</PARENTITEM>
+                    <ORDERNO>{{ orderNumber }}</ORDERNO>
+                    <AMOUNT>{{ c.amount }}</AMOUNT>
+                    <ACTUALQTY> {{ c.qty }} {{ c.unit }}</ACTUALQTY>
+                    <BILLEDQTY> {{ c.qty }} {{ c.unit }}</BILLEDQTY>
+                    <ORDERDUEDATE>{{ item.dueDate }}</ORDERDUEDATE>
+                  </BATCHALLOCATIONS.LIST>
+                </VOUCHERCOMPONENTLIST.LIST>
+                {% endfor %}
+              </BATCHALLOCATIONS.LIST>
+            </ALLINVENTORYENTRIES.LIST>
+            {% endfor %}<LEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ partyLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <AMOUNT>{{ totalAmount }}</AMOUNT>
+            </LEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

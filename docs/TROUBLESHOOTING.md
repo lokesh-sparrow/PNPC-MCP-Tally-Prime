@@ -102,6 +102,31 @@ every line for companies with location tracking on. There is no way to
 detect this from the API response alone — if you hit a blank `EXCEPTIONS:1`,
 try again with an explicit godown before assuming something else is wrong.
 
+### `EXCEPTIONS:1` with `LINEERROR: "Voucher date is missing"` — the date is outside Tally's active period
+Confirmed live: Tally's XML gateway rejects a voucher whose date falls
+outside the "Current Period" set in Tally (`Alt+F2` in the UI, or this
+connector's `set_period`) with the misleading message "Voucher date is
+missing", even though the `DATE` tag in the XML is present and correctly
+formatted. This happens for Material In/Out, Rejections In/Out, Delivery
+Note, and Receipt Note in particular — Sales/Purchase invoices and
+Order-class vouchers (Sales Order, Purchase Order, etc.) were not observed
+to hit this check the same way. Reproduced independently in Tally's own UI
+(manually creating the voucher gives the identical "Voucher date is
+missing" message), so this is a genuine Tally behavior, not an API quirk.
+**Fix:** call `set_period` with a range covering the voucher's date before
+creating it — e.g. after restarting Tally, the active period can reset to
+the company's default financial year and silently exclude dates you were
+using earlier in the same session.
+
+Note: fixing the period resolved this for Material In/Out, Rejections
+In/Out, and Receipt Note. Delivery Note kept failing with the identical
+error afterward, on a date that worked for every other type including its
+own buying-side mirror (Receipt Note) — confirmed reproducible manually in
+Tally's own UI, so this is a separate, real, unresolved issue specific to
+Delivery Note in that company, not something `set_period` fixes. If
+`create_delivery_note`/`update_delivery_note` fail with this same error
+after confirming the period is right, that's this issue, not a new one.
+
 ### Item-invoice voucher types (Sales/Purchase/Credit Note/Debit Note) stop auto-numbering
 Some Tally configurations (seen after a **Company Data →
 Rewrite** in at least one case) stop assigning voucher numbers to
@@ -342,6 +367,17 @@ either voucher type, but that's by design (it deliberately excludes
 inventory-classified vouchers), not a gap.
 
 ## Verified-live tools
+
+`update_material_in`, `update_material_out`, `update_rejections_in`,
+`update_rejections_out`, `update_receipt_note`, `update_sales_order`,
+`update_purchase_order`, `update_sales_quotation`,
+`update_job_work_in_order`, and `update_job_work_out_order` were each
+confirmed live end to end (create a real test voucher, then update it,
+then confirm `ALTERED:1`) once the active-period issue above was
+identified and fixed. `update_delivery_note` is built the same way and is
+structurally identical to the verified `update_receipt_note`, but is
+currently blocked from live verification by the separate Delivery Note
+issue noted above.
 
 `set_bill_of_materials`, `create_material_in`, `create_material_out`,
 `create_rejections_in`, and `create_rejections_out` were originally built

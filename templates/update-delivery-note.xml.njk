@@ -1,0 +1,49 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Delivery Note" ACTION="Alter" OBJVIEW="Invoice Voucher View">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Delivery Note</VOUCHERTYPENAME>
+            <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
+            <ISINVOICE>No</ISINVOICE>
+            <NARRATION>{{ narration }}</NARRATION>
+            <PARTYNAME>{{ partyLedger }}</PARTYNAME>
+            <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            {% for item in items %}<ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
+              <AMOUNT>{{ item.amount }}</AMOUNT>
+              <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
+              <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              {% if item.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
+                <AMOUNT>{{ item.amount }}</AMOUNT>
+                <ACTUALQTY> {{ item.qty }} {{ item.unit }}</ACTUALQTY>
+                <BILLEDQTY> {{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+              <ACCOUNTINGALLOCATIONS.LIST>
+                <LEDGERNAME>{{ item.salesLedger }}</LEDGERNAME>
+                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                <AMOUNT>{{ item.amount }}</AMOUNT>
+              </ACCOUNTINGALLOCATIONS.LIST>
+            </ALLINVENTORYENTRIES.LIST>
+            {% endfor %}<LEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ partyLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <AMOUNT>-{{ partyAmount }}</AMOUNT>
+            </LEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

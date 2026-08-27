@@ -1,0 +1,45 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Material Out" ACTION="Alter">
+            <DATE>{{ tallyDate }}</DATE>
+            <VOUCHERTYPENAME>Material Out</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <PERSISTEDVIEW>Multi Consumption Voucher View</PERSISTEDVIEW>
+            <PARTYNAME>{{ partyLedger }}</PARTYNAME>
+            <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            <NARRATION>{{ narration }}</NARRATION>
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ partyLedger }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <AMOUNT>-{{ totalAmount }}</AMOUNT>
+            </LEDGERENTRIES.LIST>
+            {% for item in items %}<INVENTORYENTRIESOUT.LIST>
+              <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
+              <AMOUNT>{{ item.amount }}</AMOUNT>
+              <ACTUALQTY>{{ item.qty }} {{ item.unit }}</ACTUALQTY>
+              <BILLEDQTY>{{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              {% if item.godown %}<BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>{{ item.godown }}</GODOWNNAME>
+                <BATCHNAME>{{ item.batchName }}</BATCHNAME>
+                <AMOUNT>{{ item.amount }}</AMOUNT>
+                <ACTUALQTY>{{ item.qty }} {{ item.unit }}</ACTUALQTY>
+                <BILLEDQTY>{{ item.qty }} {{ item.unit }}</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>{% endif %}
+            </INVENTORYENTRIESOUT.LIST>
+            {% endfor %}
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

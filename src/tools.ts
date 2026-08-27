@@ -703,6 +703,41 @@ export const tools = [
     },
   },
   {
+    name: "update_material_in",
+    description:
+      "Update an existing Material In voucher in TallyPrime, replacing its item lines and narration. Same fields " +
+      "as create_material_in, plus voucherNumber. Matched by date + voucher number — use get_ledger_vouchers or " +
+      "get_vouchers first to confirm it exists and is unique. Refuses if another voucher type shares the same " +
+      "number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can silently corrupt " +
+      "the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the voucher to update" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        partyLedger: { type: "string", description: "Exact name of the job worker/party ledger this material is being received from" },
+        items: {
+          type: "array",
+          description: "One or more stock items being received — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item received" },
+              qty: { type: "number", description: "Quantity received" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items"],
+    },
+  },
+  {
     name: "create_material_out",
     description:
       "Create a Material Out voucher in TallyPrime — records stock sent out to a job worker for processing, " +
@@ -733,6 +768,38 @@ export const tools = [
         voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
       },
       required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "update_material_out",
+    description:
+      "Update an existing Material Out voucher in TallyPrime, replacing its item lines and narration. Same fields " +
+      "as create_material_out, plus voucherNumber. Same matching/collision caveats as update_material_in.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the voucher to update" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        partyLedger: { type: "string", description: "Exact name of the job worker/party ledger this material is being sent to" },
+        items: {
+          type: "array",
+          description: "One or more stock items being sent out — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item sent out" },
+              qty: { type: "number", description: "Quantity sent" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items"],
     },
   },
   {
@@ -771,6 +838,37 @@ export const tools = [
     },
   },
   {
+    name: "update_rejections_in",
+    description:
+      "Update an existing Rejections In voucher in TallyPrime, replacing its item lines and narration. Same " +
+      "fields as create_rejections_in, plus voucherNumber. Same matching/collision caveats as update_material_in.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the voucher to update" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        items: {
+          type: "array",
+          description: "One or more stock items being received back as rejected — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity received" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "items"],
+    },
+  },
+  {
     name: "create_rejections_out",
     description:
       "Create a Rejections Out voucher in TallyPrime — records goods you're rejecting and returning outward " +
@@ -800,6 +898,37 @@ export const tools = [
         voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
       },
       required: ["date", "items"],
+    },
+  },
+  {
+    name: "update_rejections_out",
+    description:
+      "Update an existing Rejections Out voucher in TallyPrime, replacing its item lines and narration. Same " +
+      "fields as create_rejections_out, plus voucherNumber. Same matching/collision caveats as update_material_in.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the voucher to update" },
+        narration: { type: "string", description: "Narration / description for the voucher" },
+        items: {
+          type: "array",
+          description: "One or more stock items being sent out as rejected — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity sent" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
+              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
+            },
+            required: ["stockItem", "qty", "rate", "unit"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "items"],
     },
   },
   {
@@ -1316,6 +1445,43 @@ export const tools = [
     },
   },
   {
+    name: "update_delivery_note",
+    description:
+      "Update an existing Delivery Note in TallyPrime, replacing its item lines, party, and narration. Same " +
+      "fields as create_delivery_note, plus voucherNumber. Matched by date + voucher number — use " +
+      "get_ledger_vouchers or get_vouchers first to confirm it exists and is unique. Refuses if another voucher " +
+      "type shares the same number on that date (confirmed live: Tally's Alter lookup ignores voucher type and " +
+      "can silently corrupt the wrong one) — resolve the collision in Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing delivery note's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the delivery note to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity dispatched" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to, e.g. 'Sales Accounts'" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items"],
+    },
+  },
+  {
     name: "create_receipt_note",
     description:
       "Create a Receipt Note in TallyPrime — an item-line inventory voucher recording goods received from a " +
@@ -1351,6 +1517,40 @@ export const tools = [
         voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
       },
       required: ["date", "partyLedger", "items"],
+    },
+  },
+  {
+    name: "update_receipt_note",
+    description:
+      "Update an existing Receipt Note in TallyPrime, replacing its item lines, party, and narration. Same " +
+      "fields as create_receipt_note, plus voucherNumber. Same matching/collision caveats as update_delivery_note.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing receipt note's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the receipt note to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Supplier ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity received" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to, e.g. 'Purchase Accounts'" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
+          },
+        },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items"],
     },
   },
   {
@@ -1405,6 +1605,48 @@ export const tools = [
     },
   },
   {
+    name: "update_sales_order",
+    description:
+      "Update an existing Sales Order in TallyPrime, replacing its item lines, party, order number, and " +
+      "narration. Same fields as create_sales_order (orderNumber and each item's dueDate still REQUIRED), plus " +
+      "voucherNumber to locate the existing voucher. Matched by date + voucher number — use get_ledger_vouchers " +
+      "or get_vouchers first to confirm it exists and is unique. Refuses if another voucher type shares the same " +
+      "number on that date (confirmed live: Tally's Alter lookup ignores voucher type and can silently corrupt " +
+      "the wrong one) — resolve the collision in Tally first if that happens. Note voucherNumber here is the " +
+      "existing voucher's own number to match by — Tally may still not let you change it, since Order-class " +
+      "vouchers use 'Auto Retain' numbering (see create_sales_order).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing order's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the sales order to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity ordered" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
+              dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger", "dueDate"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
     name: "create_purchase_order",
     description:
       "Create a Purchase Order in TallyPrime — a future commitment to buy, before any goods move or invoicing " +
@@ -1443,6 +1685,43 @@ export const tools = [
         voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
+    name: "update_purchase_order",
+    description:
+      "Update an existing Purchase Order in TallyPrime, replacing its item lines, party, order number, and " +
+      "narration. Same fields as create_purchase_order, plus voucherNumber. Same matching/collision caveats as " +
+      "update_sales_order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing order's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the purchase order to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Supplier ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity ordered" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to" },
+              dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "purchaseLedger", "dueDate"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items", "orderNumber"],
     },
   },
   {
@@ -1506,6 +1785,60 @@ export const tools = [
     },
   },
   {
+    name: "update_job_work_in_order",
+    description:
+      "Update an existing Job Work In Order in TallyPrime, replacing its item lines (and their component lists), " +
+      "party, order number, and narration. Same fields as create_job_work_in_order, plus voucherNumber. Matched " +
+      "by date + voucher number — use get_ledger_vouchers or get_vouchers first to confirm it exists and is " +
+      "unique. Refuses if another voucher type shares the same number on that date (confirmed live: Tally's " +
+      "Alter lookup ignores voucher type and can silently corrupt the wrong one) — resolve the collision in " +
+      "Tally first if that happens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing order's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the job work order to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Customer ledger name (the principal who is giving this job work order)" },
+        items: {
+          type: "array",
+          description: "One entry per finished item — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the finished/output stock item to be delivered" },
+              qty: { type: "number", description: "Quantity of the finished item expected" },
+              rate: { type: "number", description: "Rate per unit of the finished item" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              components: {
+                type: "array",
+                description: "Raw materials the customer is expected to supply for this finished item.",
+                items: {
+                  type: "object",
+                  properties: {
+                    stockItem: { type: "string", description: "Exact name of the raw material stock item" },
+                    qty: { type: "number", description: "Quantity of raw material expected from the customer" },
+                    rate: { type: "number", description: "Rate per unit of the raw material" },
+                    unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+                  },
+                  required: ["stockItem", "qty", "rate", "unit"],
+                },
+              },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "dueDate", "components"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
     name: "create_job_work_out_order",
     description:
       "Create a Job Work Out Order in TallyPrime — used when this company is the principal, sending raw " +
@@ -1563,6 +1896,57 @@ export const tools = [
     },
   },
   {
+    name: "update_job_work_out_order",
+    description:
+      "Update an existing Job Work Out Order in TallyPrime, replacing its item lines (and their component " +
+      "lists), party, order number, and narration. Same fields as create_job_work_out_order, plus voucherNumber. " +
+      "Same matching/collision caveats as update_job_work_in_order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing order's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the job work order to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Job worker (subcontractor) ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per finished item — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the finished/output stock item expected back" },
+              qty: { type: "number", description: "Quantity of the finished item expected" },
+              rate: { type: "number", description: "Rate per unit of the finished item" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              components: {
+                type: "array",
+                description: "Raw materials this company will send out to the job worker for this finished item.",
+                items: {
+                  type: "object",
+                  properties: {
+                    stockItem: { type: "string", description: "Exact name of the raw material stock item" },
+                    qty: { type: "number", description: "Quantity of raw material to be sent out" },
+                    rate: { type: "number", description: "Rate per unit of the raw material" },
+                    unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+                  },
+                  required: ["stockItem", "qty", "rate", "unit"],
+                },
+              },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "dueDate", "components"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
     name: "create_sales_quotation",
     description:
       "Create a Sales Quotation in TallyPrime — a pre-order price quote to a prospective customer, one step " +
@@ -1600,6 +1984,43 @@ export const tools = [
         voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
+    },
+  },
+  {
+    name: "update_sales_quotation",
+    description:
+      "Update an existing Sales Quotation in TallyPrime, replacing its item lines, party, order number, and " +
+      "narration. Same fields as create_sales_quotation, plus voucherNumber. Same matching/collision caveats as " +
+      "update_sales_order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Existing quotation's date in DD-MM-YYYY format" },
+        voucherNumber: { type: "string", description: "Exact voucher number of the quotation to update" },
+        narration: { type: "string", description: "Narration / description" },
+        partyLedger: { type: "string", description: "Prospective customer ledger name" },
+        items: {
+          type: "array",
+          description: "One entry per line — replaces all existing lines.",
+          items: {
+            type: "object",
+            properties: {
+              stockItem: { type: "string", description: "Exact name of the stock item" },
+              qty: { type: "number", description: "Quantity quoted" },
+              rate: { type: "number", description: "Rate per unit" },
+              unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
+              salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
+              dueDate: { type: "string", description: "Expected validity/delivery date for this line, DD-MM-YYYY. REQUIRED." },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
+              discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
+            },
+            required: ["stockItem", "qty", "rate", "unit", "salesLedger", "dueDate"],
+          },
+        },
+        orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI." },
+      },
+      required: ["date", "voucherNumber", "partyLedger", "items", "orderNumber"],
     },
   },
   {
@@ -2322,6 +2743,20 @@ function createDeliveryNoteXml(args: {
   });
 }
 
+function updateDeliveryNoteXml(
+  args: Parameters<typeof createDeliveryNoteXml>[0] & { voucherNumber: string }
+): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("update-delivery-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
+  });
+}
+
 function createReceiptNoteXml(args: {
   date: string;
   narration?: string;
@@ -2337,6 +2772,20 @@ function createReceiptNoteXml(args: {
     items,
     partyAmount,
     voucherNumber: args.voucherNumber,
+  });
+}
+
+function updateReceiptNoteXml(
+  args: Parameters<typeof createReceiptNoteXml>[0] & { voucherNumber: string }
+): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("update-receipt-note.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    partyAmount,
   });
 }
 
@@ -2360,6 +2809,21 @@ function createSalesOrderXml(args: {
   });
 }
 
+function updateSalesOrderXml(
+  args: Parameters<typeof createSalesOrderXml>[0] & { voucherNumber: string }
+): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("update-sales-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
+    partyAmount,
+    orderNumber: args.orderNumber,
+  });
+}
+
 function createSalesQuotationXml(args: {
   date: string;
   narration?: string;
@@ -2377,6 +2841,21 @@ function createSalesQuotationXml(args: {
     partyAmount,
     orderNumber: args.orderNumber,
     voucherNumber: args.voucherNumber,
+  });
+}
+
+function updateSalesQuotationXml(
+  args: Parameters<typeof createSalesQuotationXml>[0] & { voucherNumber: string }
+): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("update-sales-quotation.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
+    partyAmount,
+    orderNumber: args.orderNumber,
   });
 }
 
@@ -2460,6 +2939,42 @@ function createJobWorkOutOrderXml(args: {
   });
 }
 
+function updateJobWorkInOrderXml(
+  args: Parameters<typeof createJobWorkInOrderXml>[0] & { voucherNumber: string }
+): string {
+  const items = computeJobWorkItems(
+    args.items,
+    args.items.map((i) => toTallyActionDate(i.dueDate))
+  );
+  return render("update-job-work-in-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    totalAmount: items.reduce((s, i) => s + i.amount, 0),
+    orderNumber: args.orderNumber,
+  });
+}
+
+function updateJobWorkOutOrderXml(
+  args: Parameters<typeof createJobWorkOutOrderXml>[0] & { voucherNumber: string }
+): string {
+  const items = computeJobWorkItems(
+    args.items,
+    args.items.map((i) => toTallyActionDate(i.dueDate))
+  );
+  return render("update-job-work-out-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items,
+    totalAmount: items.reduce((s, i) => s + i.amount, 0),
+    orderNumber: args.orderNumber,
+  });
+}
+
 function createPurchaseOrderXml(args: {
   date: string;
   narration?: string;
@@ -2477,6 +2992,21 @@ function createPurchaseOrderXml(args: {
     partyAmount,
     orderNumber: args.orderNumber,
     voucherNumber: args.voucherNumber,
+  });
+}
+
+function updatePurchaseOrderXml(
+  args: Parameters<typeof createPurchaseOrderXml>[0] & { voucherNumber: string }
+): string {
+  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  return render("update-purchase-order.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: items.map((item, i) => ({ ...item, dueDate: toTallyActionDate(args.items[i].dueDate) })),
+    partyAmount,
+    orderNumber: args.orderNumber,
   });
 }
 
@@ -2566,6 +3096,32 @@ function createMaterialOutXml(args: Parameters<typeof createMaterialInXml>[0]): 
   });
 }
 
+function updateMaterialInXml(
+  args: Parameters<typeof createMaterialInXml>[0] & { voucherNumber: string }
+): string {
+  const computedItems = computeMaterialMoveItems(args.items);
+  return render("update-material-in.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: computedItems,
+    totalAmount: computedItems.reduce((s, i) => s + i.amount, 0),
+  });
+}
+
+function updateMaterialOutXml(args: Parameters<typeof updateMaterialInXml>[0]): string {
+  const computedItems = computeMaterialMoveItems(args.items);
+  return render("update-material-out.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    partyLedger: args.partyLedger,
+    items: computedItems,
+    totalAmount: computedItems.reduce((s, i) => s + i.amount, 0),
+  });
+}
+
 function createRejectionsInXml(args: {
   date: string;
   narration?: string;
@@ -2586,6 +3142,26 @@ function createRejectionsOutXml(args: Parameters<typeof createRejectionsInXml>[0
     narration: args.narration ?? "",
     items: computeMaterialMoveItems(args.items),
     voucherNumber: args.voucherNumber,
+  });
+}
+
+function updateRejectionsInXml(
+  args: Parameters<typeof createRejectionsInXml>[0] & { voucherNumber: string }
+): string {
+  return render("update-rejections-in.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    items: computeMaterialMoveItems(args.items),
+  });
+}
+
+function updateRejectionsOutXml(args: Parameters<typeof updateRejectionsInXml>[0]): string {
+  return render("update-rejections-out.xml.njk", {
+    tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    narration: args.narration ?? "",
+    items: computeMaterialMoveItems(args.items),
   });
 }
 
@@ -3742,9 +4318,25 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "update_delivery_note": {
+      const noteArgs = args as Parameters<typeof updateDeliveryNoteXml>[0];
+      await assertVoucherUnambiguous("Delivery Note", noteArgs.voucherNumber, noteArgs.date);
+      const xml = updateDeliveryNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_receipt_note": {
       const noteArgs = args as Parameters<typeof createReceiptNoteXml>[0];
       const xml = createReceiptNoteXml(noteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_receipt_note": {
+      const noteArgs = args as Parameters<typeof updateReceiptNoteXml>[0];
+      await assertVoucherUnambiguous("Receipt Note", noteArgs.voucherNumber, noteArgs.date);
+      const xml = updateReceiptNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
@@ -3756,9 +4348,25 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "update_sales_order": {
+      const orderArgs = args as Parameters<typeof updateSalesOrderXml>[0];
+      await assertVoucherUnambiguous("Sales Order", orderArgs.voucherNumber, orderArgs.date);
+      const xml = updateSalesOrderXml(orderArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_purchase_order": {
       const orderArgs = args as Parameters<typeof createPurchaseOrderXml>[0];
       const xml = createPurchaseOrderXml(orderArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_purchase_order": {
+      const orderArgs = args as Parameters<typeof updatePurchaseOrderXml>[0];
+      await assertVoucherUnambiguous("Purchase Order", orderArgs.voucherNumber, orderArgs.date);
+      const xml = updatePurchaseOrderXml(orderArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
@@ -3770,6 +4378,14 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "update_job_work_in_order": {
+      const jwArgs = args as Parameters<typeof updateJobWorkInOrderXml>[0];
+      await assertVoucherUnambiguous("Job Work In Order", jwArgs.voucherNumber, jwArgs.date);
+      const xml = updateJobWorkInOrderXml(jwArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_job_work_out_order": {
       const jwArgs = args as Parameters<typeof createJobWorkOutOrderXml>[0];
       const xml = createJobWorkOutOrderXml(jwArgs);
@@ -3777,9 +4393,25 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "update_job_work_out_order": {
+      const jwArgs = args as Parameters<typeof updateJobWorkOutOrderXml>[0];
+      await assertVoucherUnambiguous("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date);
+      const xml = updateJobWorkOutOrderXml(jwArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_sales_quotation": {
       const quoteArgs = args as Parameters<typeof createSalesQuotationXml>[0];
       const xml = createSalesQuotationXml(quoteArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_sales_quotation": {
+      const quoteArgs = args as Parameters<typeof updateSalesQuotationXml>[0];
+      await assertVoucherUnambiguous("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date);
+      const xml = updateSalesQuotationXml(quoteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
@@ -3810,9 +4442,25 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "update_material_in": {
+      const materialArgs = args as Parameters<typeof updateMaterialInXml>[0];
+      await assertVoucherUnambiguous("Material In", materialArgs.voucherNumber, materialArgs.date);
+      const xml = updateMaterialInXml(materialArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_material_out": {
       const materialArgs = args as Parameters<typeof createMaterialOutXml>[0];
       const xml = createMaterialOutXml(materialArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_material_out": {
+      const materialArgs = args as Parameters<typeof updateMaterialOutXml>[0];
+      await assertVoucherUnambiguous("Material Out", materialArgs.voucherNumber, materialArgs.date);
+      const xml = updateMaterialOutXml(materialArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }
@@ -3824,9 +4472,25 @@ export async function handleTool(
       return checkImportResult(result);
     }
 
+    case "update_rejections_in": {
+      const rejArgs = args as Parameters<typeof updateRejectionsInXml>[0];
+      await assertVoucherUnambiguous("Rejections In", rejArgs.voucherNumber, rejArgs.date);
+      const xml = updateRejectionsInXml(rejArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
     case "create_rejections_out": {
       const rejArgs = args as Parameters<typeof createRejectionsOutXml>[0];
       const xml = createRejectionsOutXml(rejArgs);
+      const result = await tallyRequest(xml);
+      return checkImportResult(result);
+    }
+
+    case "update_rejections_out": {
+      const rejArgs = args as Parameters<typeof updateRejectionsOutXml>[0];
+      await assertVoucherUnambiguous("Rejections Out", rejArgs.voucherNumber, rejArgs.date);
+      const xml = updateRejectionsOutXml(rejArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
     }

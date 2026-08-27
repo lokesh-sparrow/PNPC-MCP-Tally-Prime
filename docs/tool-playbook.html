@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tally Connector Playbook</title>
-<meta name="description" content="Plain-English example prompts for all 72 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
+<meta name="description" content="Plain-English example prompts for all 83 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -352,13 +352,13 @@
     <p class="eyebrow"><a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme">PNPC-MCP-Tally-Prime</a> · Claude Desktop chat</p>
     <h1>The Tally Connector Playbook</h1>
     <p class="lede">
-      Every one of the 72 tools this connector gives Claude, with a plain-English
+      Every one of the 83 tools this connector gives Claude, with a plain-English
       example of the sentence you'd actually type in a Claude Desktop chat to use it.
       Nothing here is a command syntax — Claude reads your request and picks the
       right tool itself.
     </p>
     <div class="stat-row">
-      <div class="stat"><span class="n">72</span><span class="label">tools total</span></div>
+      <div class="stat"><span class="n">83</span><span class="label">tools total</span></div>
       <div class="stat"><span class="n">7</span><span class="label">categories</span></div>
       <div class="stat"><span class="n">v1.7.0</span><span class="label">current release</span></div>
     </div>
@@ -447,13 +447,19 @@
         ["create_stock_journal", "Moves stock from raw materials into finished/by-products in one entry, with optional extra costs folded in.", "Convert 50 units of Raw Material A and 20 of Raw Material B into 60 units of Finished Product X"],
         ["update_stock_journal", "Replaces an existing Stock Journal's source/destination lines.", "Stock journal number 9 — change the output quantity to 65 units"],
         ["create_material_in", "Stock received back from a job worker, tracked against their ledger, no accounting posting.", "Record 30 units of Item C received back from Job Worker LLC"],
+        ["update_material_in", "Replaces an existing Material In voucher's item lines.", "That Material In from Job Worker LLC — change the quantity to 35 units"],
         ["create_material_out", "Stock sent out to a job worker for processing.", "Send 40 units of Item C out to Job Worker LLC for processing"],
+        ["update_material_out", "Replaces an existing Material Out voucher's item lines.", "That Material Out to Job Worker LLC — change it to 45 units"],
         ["create_rejections_in", "Goods rejected and returned to us — inventory only, no party ledger.", "Record 5 units of Item A returned to us as rejected"],
+        ["update_rejections_in", "Replaces an existing Rejections In voucher's item lines.", "That rejection record — change the quantity to 6 units"],
         ["create_rejections_out", "Goods we're rejecting and sending back out.", "Send 3 defective units of Item B back out as rejected"],
+        ["update_rejections_out", "Replaces an existing Rejections Out voucher's item lines.", "That outgoing rejection — change it to 4 units"],
         ["create_physical_stock", "Records a physical count and corrects the book quantity to match.", "We counted 95 units of Item A on the shelf, book shows 100 — record the physical count"],
         ["update_physical_stock", "Replaces an existing Physical Stock voucher's counted lines.", "That physical count from yesterday — correct Item A's count to 92 units"],
         ["create_delivery_note", "Goods dispatched to a customer before or without a full invoice.", "Create a delivery note for 10 units of Item A going out to XYZ LLC"],
-        ["create_receipt_note", "Goods received from a supplier before or without a full invoice.", "Create a receipt note for 20 units of Item B received from ABC Supplies"]
+        ["update_delivery_note", "Replaces an existing Delivery Note's item lines.", "That delivery note to XYZ LLC — change the quantity to 12 units"],
+        ["create_receipt_note", "Goods received from a supplier before or without a full invoice.", "Create a receipt note for 20 units of Item B received from ABC Supplies"],
+        ["update_receipt_note", "Replaces an existing Receipt Note's item lines.", "That receipt note from ABC Supplies — change the quantity to 25 units"]
       ]
     },
     {
@@ -462,10 +468,15 @@
       note: "Commitments — nothing moves stock or ledgers until it's actually delivered/invoiced.",
       tools: [
         ["create_sales_order", "A future commitment to sell — needs an order number and a due date per item.", "Create a sales order for XYZ LLC — 20 units of Item A, due 15 September, order number SO-1042"],
+        ["update_sales_order", "Replaces an existing Sales Order's item lines, party, and order number.", "Sales order SO-1042 — change the quantity to 25 units"],
         ["create_purchase_order", "A future commitment to buy.", "Create a purchase order to ABC Supplies for 50 units of Item B, due 10 September, order number PO-330"],
+        ["update_purchase_order", "Replaces an existing Purchase Order's item lines, party, and order number.", "Purchase order PO-330 — push the due date to 20 September"],
         ["create_sales_quotation", "A pre-order price quote — one step before a firm Sales Order.", "Send a quotation to a prospective customer for 15 units of Item A at AED 120 each"],
+        ["update_sales_quotation", "Replaces an existing Sales Quotation's item lines, party, and order number.", "That quotation — drop the price to AED 110 per unit"],
         ["create_job_work_in_order", "We're the job worker — booking an order to process raw materials a customer will supply.", "Book a job work order from Customer LLC — we'll produce 100 units of Item X from materials they'll supply, due 20 September"],
-        ["create_job_work_out_order", "We're the principal — sending raw materials out to a job worker, expecting a finished item back.", "Create a job work out order — send 200kg of Raw Material A to Job Worker LLC, expect 180 units of Finished Item back by 25 September"]
+        ["update_job_work_in_order", "Replaces an existing Job Work In Order's item lines, components, and order number.", "That job work order from Customer LLC — change the finished quantity to 120 units"],
+        ["create_job_work_out_order", "We're the principal — sending raw materials out to a job worker, expecting a finished item back.", "Create a job work out order — send 200kg of Raw Material A to Job Worker LLC, expect 180 units of Finished Item back by 25 September"],
+        ["update_job_work_out_order", "Replaces an existing Job Work Out Order's item lines, components, and order number.", "That job work out order to Job Worker LLC — change it to 220kg of raw material"]
       ]
     },
     {
