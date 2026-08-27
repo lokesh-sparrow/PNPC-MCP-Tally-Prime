@@ -101,11 +101,17 @@ lives, and how to reload it, depends on the client — check its own docs.
 ## Setup (Cloud)
 
 For browser-based or mobile LLM clients that can't reach a TallyPrime
-instance running on your local PC, the server can run as a small web
-service instead, protected by a single bearer token you set yourself
-(`TALLY_MCP_TOKEN`) — not OAuth. This is more involved and puts your
-Tally gateway on the network, so treat the token like a password —
-see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md).
+instance running on your local PC (claude.ai, ChatGPT, Grok), the server
+can run as a small web service instead. The underlying credential is
+still a single bearer token you set yourself (`TALLY_MCP_TOKEN`) — treat
+it like a password — but this server also supports a real OAuth login
+flow on top of it, since that's what those clients' "Add custom
+connector" flows expect. This is more involved and puts your Tally
+gateway on the network — see [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md)
+for running it, [docs/CLOUDFLARE_TUNNEL.md](docs/CLOUDFLARE_TUNNEL.md) for
+exposing it without opening a router port, and
+[docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) for the OAuth login
+flow itself.
 
 ## Available tools (83 total)
 
@@ -318,6 +324,7 @@ and `TALLY_DISABLED_TOOLS`.
 | `TALLY_AUDIT_LOG_PATH` | `audit.log.jsonl` next to the installed package | Where the append-only audit log is written. Point multiple connector instances at one shared path if you want a single combined log |
 | `PORT` | `3939` | Port for `npm run start:http` (remote mode only) |
 | `TALLY_MCP_TOKEN` | _(unset)_ | Bearer token required on the HTTP server's `/mcp` endpoint if set (remote mode only) |
+| `PUBLIC_URL` | `http://localhost:<PORT>` | This server's externally-reachable HTTPS address (remote mode only) — required for the OAuth login flow in [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) to work |
 
 > **Running this alongside another Tally MCP connector?** Each connector needs
 > its own gateway port open in TallyPrime (`F1 → Settings → Connectivity`) —
@@ -399,7 +406,7 @@ manifest.json     Claude Desktop Extension manifest (manifest_version 0.3)
 ## Roadmap / not yet supported
 
 - GST/VAT-specific statutory reports (e.g. GSTR-1, GSTR-3B, VAT return format)
-- Ready-made packaging for AI clients other than Claude Desktop — the server itself runs on the standard MCP protocol (stdio and HTTP), so it isn't tied to Claude; the `.mcpb`/install steps above are just this repo's Claude Desktop packaging
+- One-click packaging (a `.mcpb` equivalent) for clients other than Claude Desktop — claude.ai, ChatGPT, and Grok are already reachable via the remote/OAuth setup above, but only through manual connector configuration; there's no installer for them the way `.mcpb` is for Claude Desktop
 
 ## License
 
