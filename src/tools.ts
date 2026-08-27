@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
@@ -8,8 +9,24 @@ import { getPermissionStatus } from "./permissions.js";
 export const tools = [
   {
     name: "get_ledgers",
-    description: "Get all ledgers (accounts) from TallyPrime",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    description:
+      "Get ledgers (accounts) from TallyPrime. Omit query to get every ledger. Pass query to instead get a " +
+      "fuzzy-ranked shortlist of the closest-matching ledger names — useful when you have a rough or partial " +
+      "name (e.g. from a client document) and need Tally's exact spelling before creating a voucher or a new " +
+      "ledger, without pulling and scanning the entire ledger list yourself. Matches on exact/prefix/substring, " +
+      "then falls back to a loose in-order character match for abbreviations and typos (e.g. 'vro' finds 'VRO " +
+      "Technology'). Returns at most the top 20 matches, ranked best first; an empty result means create the " +
+      "ledger — nothing close enough exists yet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Rough or partial ledger name to fuzzy-match against. Omit to get the full ledger list instead.",
+        },
+      },
+      required: [],
+    },
   },
   {
     name: "get_stock_items",
@@ -2582,6 +2599,54 @@ export const tools = [
       "instead of inferring connector state from a single tool call's success/failure.",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "preview_write",
+    description:
+      "Build the exact XML for any write tool WITHOUT sending it to Tally — nothing is touched. Returns a " +
+      "preview_id plus a plain-English description and the raw XML, so you (or whoever's reviewing) can see " +
+      "precisely what would happen before it happens. Use this instead of calling a create_*/update_*/delete_* " +
+      "tool directly whenever you want a human to review a batch of changes first — e.g. drafting several " +
+      "vouchers from a folder of client documents, where posting the wrong one is costly. Every applicable " +
+      "safety check this tool would normally run (e.g. the voucher-type collision check on update_*/delete_voucher) " +
+      "runs now, at preview time, so the preview already reflects any refusal. A preview expires after 15 minutes " +
+      "and is single-use — call confirm_write with its preview_id to actually post it, or just don't confirm it " +
+      "if it's wrong. Never touches Tally with a write of its own (a create_* preview makes no gateway call at " +
+      "all; an update_*/delete_* preview only makes the same read-only collision-check query that tool would " +
+      "normally make) — so unlike every other write tool, preview_write still works even when read-only mode is " +
+      "on. confirm_write is the one that's actually blocked by read-only mode.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        toolName: {
+          type: "string",
+          description:
+            "Exact name of the write tool to preview, e.g. 'create_sales_invoice' or 'update_voucher'. Must be " +
+            "a create_*/update_*/delete_* tool or set_bill_of_materials — read tools, context-switching, SQL " +
+            "sync, and audit tools have nothing to preview and aren't accepted here.",
+        },
+        args: {
+          type: "object",
+          description: "The exact same arguments you'd pass to that tool directly.",
+        },
+      },
+      required: ["toolName", "args"],
+    },
+  },
+  {
+    name: "confirm_write",
+    description:
+      "Post a previously-built preview to Tally — this is the only tool that actually writes, when the batch " +
+      "went through preview_write first. Takes the preview_id from a prior preview_write call and sends that " +
+      "exact XML, unchanged, to Tally. A preview_id can only be confirmed once — reusing an already-confirmed " +
+      "or expired one fails rather than silently reposting or reusing stale data.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        previewId: { type: "string", description: "The preview_id returned by preview_write." },
+      },
+      required: ["previewId"],
+    },
+  },
 ];
 
 function reportXml(reportName: string, staticVariables: Record<string, string>): string {
@@ -3791,12 +3856,223 @@ function checkImportResult(result: unknown): string {
   return `Success. Created: ${created ?? "unknown"}. Raw response: ${JSON.stringify(cleaned, null, 2)}`;
 }
 
+// ---------------------------------------------------------------------------
+// preview_write / confirm_write — a generic, opt-in preview-then-confirm gate
+// sitting alongside the direct create_*/update_*/delete_* tools (which still
+// post immediately, unchanged, for normal single-call use). buildWriteXml
+// mirrors each write case's arg-parsing and pre-check logic — deliberately
+// duplicated rather than refactored into the switch below, so this stays
+// fully additive and never risks the already-verified-live direct tools.
+// State is in-memory/session-only, same lifetime as the SQL cache elsewhere
+// in this connector — gone on restart, which is fine for a single-user setup.
+// ---------------------------------------------------------------------------
+
+type PendingWrite = { toolName: string; description: string; xml: string; expiresAt: number };
+const pendingWrites = new Map<string, PendingWrite>();
+const PREVIEW_TTL_MS = 15 * 60 * 1000;
+
+function prunePendingWrites(): void {
+  const now = Date.now();
+  for (const [id, entry] of pendingWrites) {
+    if (entry.expiresAt < now) pendingWrites.delete(id);
+  }
+}
+
+// Ranks how well a rough/partial name matches a real ledger name — for
+// get_ledgers' optional query param, so "VRO" or "vro tech" finds "VRO
+// Technology" without needing the exact spelling. Higher is a better match;
+// 0 means no match at all. Dependency-free by design, matching this
+// project's other small self-contained helpers.
+function fuzzyScore(query: string, candidate: unknown): number {
+  // Confirmed live: a purely-numeric ledger name (e.g. a phone number used
+  // as the ledger name) comes back from Tally's XML gateway as a JS number,
+  // not a string, since fast-xml-parser coerces all-digit text content —
+  // String() here, not a string-typed parameter, so a real ledger with a
+  // number for a name doesn't crash the search instead of just not matching.
+  const q = query.trim().toLowerCase();
+  const c = String(candidate).trim().toLowerCase();
+  if (!q || !c) return 0;
+  if (c === q) return 100;
+  if (c.startsWith(q)) return 90;
+  if (c.includes(q)) return 75;
+  const qTokens = q.split(/\s+/).filter(Boolean);
+  if (qTokens.length > 1 && qTokens.every((t) => c.includes(t))) return 65;
+  // Subsequence match: every character of the query appears in candidate, in
+  // order (not necessarily adjacent) — catches abbreviations/typos loose
+  // substring matching misses, e.g. "vrotech" against "VRO Technology".
+  let qi = 0;
+  for (let ci = 0; ci < c.length && qi < q.length; ci++) {
+    if (c[ci] === q[qi]) qi++;
+  }
+  if (qi === q.length) {
+    return Math.max(30, Math.round(55 * (q.length / c.length)));
+  }
+  return 0;
+}
+
+function describeWrite(toolName: string, args: Record<string, unknown>): string {
+  const a = args as Record<string, any>;
+  const bits: string[] = [toolName];
+  if (typeof a.name === "string") bits.push(`'${a.name}'`);
+  if (typeof a.voucherType === "string") bits.push(a.voucherType);
+  if (typeof a.voucherNumber === "string") bits.push(`#${a.voucherNumber}`);
+  if (typeof a.date === "string") bits.push(`dated ${a.date}`);
+  if (typeof a.partyLedger === "string") bits.push(`for ${a.partyLedger}`);
+  return bits.join(" ");
+}
+
+async function buildWriteXml(toolName: string, args: Record<string, unknown>): Promise<string> {
+  const a = args as any;
+  switch (toolName) {
+    case "create_ledger": {
+      const {
+        name: ledgerName, oldName, parent, openingBalance, maintainBillWise, trn, email, website, phone,
+        mobile, billCreditPeriod, creditLimit, address, state, country, pincode, mailingName,
+        addressApplicableFrom, extraFields,
+      } = a;
+      return createLedgerXml({
+        name: ledgerName, parent, openingBalance: openingBalance ?? 0, oldName, maintainBillWise, trn, email,
+        website, phone, mobile, billCreditPeriod, creditLimit, address, state, country, pincode, mailingName,
+        addressApplicableFrom, extraFields,
+      });
+    }
+    case "delete_master":
+      return deleteMasterXml(String(a.collection).toUpperCase(), a.names);
+    case "create_voucher":
+      return createVoucherXml(a);
+    case "create_sales_invoice":
+      return createSalesInvoiceXml(a);
+    case "update_sales_invoice":
+      await assertVoucherUnambiguous("Sales", a.voucherNumber, a.date);
+      return updateSalesInvoiceXml(a);
+    case "create_purchase_invoice":
+      return createPurchaseInvoiceXml(a);
+    case "update_purchase_invoice":
+      await assertVoucherUnambiguous("Purchase", a.voucherNumber, a.date);
+      return updatePurchaseInvoiceXml(a);
+    case "create_credit_note":
+      return createCreditNoteXml(a);
+    case "update_credit_note":
+      await assertVoucherUnambiguous("Credit Note", a.voucherNumber, a.date);
+      return updateCreditNoteXml(a);
+    case "create_debit_note":
+      return createDebitNoteXml(a);
+    case "update_debit_note":
+      await assertVoucherUnambiguous("Debit Note", a.voucherNumber, a.date);
+      return updateDebitNoteXml(a);
+    case "create_delivery_note":
+      return createDeliveryNoteXml(a);
+    case "update_delivery_note":
+      await assertVoucherUnambiguous("Delivery Note", a.voucherNumber, a.date);
+      return updateDeliveryNoteXml(a);
+    case "create_receipt_note":
+      return createReceiptNoteXml(a);
+    case "update_receipt_note":
+      await assertVoucherUnambiguous("Receipt Note", a.voucherNumber, a.date);
+      return updateReceiptNoteXml(a);
+    case "create_sales_order":
+      return createSalesOrderXml(a);
+    case "update_sales_order":
+      await assertVoucherUnambiguous("Sales Order", a.voucherNumber, a.date);
+      return updateSalesOrderXml(a);
+    case "create_purchase_order":
+      return createPurchaseOrderXml(a);
+    case "update_purchase_order":
+      await assertVoucherUnambiguous("Purchase Order", a.voucherNumber, a.date);
+      return updatePurchaseOrderXml(a);
+    case "create_job_work_in_order":
+      return createJobWorkInOrderXml(a);
+    case "update_job_work_in_order":
+      await assertVoucherUnambiguous("Job Work In Order", a.voucherNumber, a.date);
+      return updateJobWorkInOrderXml(a);
+    case "create_job_work_out_order":
+      return createJobWorkOutOrderXml(a);
+    case "update_job_work_out_order":
+      await assertVoucherUnambiguous("Job Work Out Order", a.voucherNumber, a.date);
+      return updateJobWorkOutOrderXml(a);
+    case "create_sales_quotation":
+      return createSalesQuotationXml(a);
+    case "update_sales_quotation":
+      await assertVoucherUnambiguous("Sales Quotation", a.voucherNumber, a.date);
+      return updateSalesQuotationXml(a);
+    case "create_stock_journal":
+      return createStockJournalXml(a);
+    case "update_stock_journal":
+      await assertVoucherUnambiguous(a.voucherType ?? "Stock Journal", a.voucherNumber, a.date);
+      return updateStockJournalXml(a);
+    case "create_material_in":
+      return createMaterialInXml(a);
+    case "update_material_in":
+      await assertVoucherUnambiguous("Material In", a.voucherNumber, a.date);
+      return updateMaterialInXml(a);
+    case "create_material_out":
+      return createMaterialOutXml(a);
+    case "update_material_out":
+      await assertVoucherUnambiguous("Material Out", a.voucherNumber, a.date);
+      return updateMaterialOutXml(a);
+    case "create_rejections_in":
+      return createRejectionsInXml(a);
+    case "update_rejections_in":
+      await assertVoucherUnambiguous("Rejections In", a.voucherNumber, a.date);
+      return updateRejectionsInXml(a);
+    case "create_rejections_out":
+      return createRejectionsOutXml(a);
+    case "update_rejections_out":
+      await assertVoucherUnambiguous("Rejections Out", a.voucherNumber, a.date);
+      return updateRejectionsOutXml(a);
+    case "create_physical_stock":
+      return createPhysicalStockXml(a);
+    case "update_physical_stock":
+      await assertVoucherUnambiguous("Physical Stock", a.voucherNumber, a.date);
+      return updatePhysicalStockXml(a);
+    case "create_group":
+      return createGroupXml(a.name, a.parent, a.oldName);
+    case "create_stock_group":
+      return createStockGroupXml(a.name, a.parent);
+    case "create_unit":
+      return createUnitXml(a);
+    case "create_godown":
+      return createGodownXml(a.name, a.parent);
+    case "create_cost_category":
+      return createCostCategoryXml(a);
+    case "create_cost_centre":
+      return createCostCentreXml(a);
+    case "create_voucher_type":
+      return createVoucherTypeXml(a);
+    case "create_stock_item":
+      return createStockItemXml({
+        name: a.name, group: a.group, unit: a.unit, openingBalance: a.openingBalance ?? 0,
+        openingRate: a.openingRate ?? 0, description: a.description, rateOfVat: a.rateOfVat,
+        ignoreNegativeStock: a.ignoreNegativeStock, extraFields: a.extraFields,
+      });
+    case "update_stock_item":
+      return updateStockItemXml(a);
+    case "delete_stock_item":
+      return deleteStockItemXml(a.name);
+    case "set_bill_of_materials":
+      return setBillOfMaterialsXml(a);
+    case "update_voucher":
+      await assertVoucherUnambiguous(a.voucherType, a.voucherNumber, a.date);
+      return updateVoucherXml(a);
+    case "delete_voucher":
+      await assertVoucherUnambiguous(a.voucherType, a.voucherNumber, a.date);
+      return deleteVoucherXml(a.voucherType, a.voucherNumber, a.date);
+    default:
+      throw new Error(
+        `'${toolName}' isn't a previewable write tool. preview_write only accepts create_*/update_*/delete_* ` +
+          `tools and set_bill_of_materials — read tools, context-switching, SQL sync, and audit tools have ` +
+          `nothing to preview.`
+      );
+  }
+}
+
 export async function handleTool(
   name: string,
   args: Record<string, unknown>
 ): Promise<string> {
   switch (name) {
     case "get_ledgers": {
+      const { query } = args as { query?: string };
       const xml = buildCollectionXml("Ledger", [
         { name: "NAME" },
         {
@@ -3806,7 +4082,20 @@ export async function handleTool(
         { name: "CLOSINGBALANCE", datatype: "amount" },
       ]);
       const result = await tallyRequest(xml);
-      return JSON.stringify(cleanTallyResult(result), null, 2);
+      if (!query) {
+        return JSON.stringify(cleanTallyResult(result), null, 2);
+      }
+      // NAME is typed loosely (not just string) because a purely-numeric ledger
+      // name comes back from Tally as a JS number after XML parsing — confirmed
+      // live (see fuzzyScore).
+      const rows = extractRecords(result) as { NAME: string | number; PARENT: string; CLOSINGBALANCE: number }[];
+      const ranked = rows
+        .map((row) => ({ row, score: fuzzyScore(query, row.NAME) }))
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 20)
+        .map((r) => r.row);
+      return JSON.stringify(ranked, null, 2);
     }
 
     case "get_stock_items": {
@@ -4766,6 +5055,32 @@ export async function handleTool(
       const xml = deleteVoucherXml(voucherType, voucherNumber, date);
       const result = await tallyRequest(xml);
       return checkImportResult(result);
+    }
+
+    case "preview_write": {
+      const { toolName, args: innerArgs } = args as { toolName: string; args: Record<string, unknown> };
+      prunePendingWrites();
+      const xml = await buildWriteXml(toolName, innerArgs ?? {});
+      const description = describeWrite(toolName, innerArgs ?? {});
+      const previewId = randomBytes(12).toString("hex");
+      pendingWrites.set(previewId, { toolName, description, xml, expiresAt: Date.now() + PREVIEW_TTL_MS });
+      return JSON.stringify({ previewId, toolName, description, xml }, null, 2);
+    }
+
+    case "confirm_write": {
+      const { previewId } = args as { previewId: string };
+      prunePendingWrites();
+      const entry = pendingWrites.get(previewId);
+      if (!entry) {
+        throw new Error(
+          `No pending write found for preview_id '${previewId}' — it was never issued by preview_write, has ` +
+            `already been confirmed (each preview is single-use), or expired (previews last 15 minutes). ` +
+            `Call preview_write again to get a fresh one.`
+        );
+      }
+      pendingWrites.delete(previewId);
+      const result = await tallyRequest(entry.xml);
+      return `Confirmed ${entry.toolName} — ${entry.description}\n${checkImportResult(result)}`;
     }
 
     case "sync_to_sql": {

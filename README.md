@@ -114,7 +114,7 @@ exposing it without opening a router port, and
 [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) for the OAuth login
 flow itself.
 
-## Available tools (83 total)
+## Available tools (85 total)
 
 You don't call these directly — just describe what you want in chat and Claude
 picks the right one. For a plain-English example prompt per tool, grouped by
@@ -128,7 +128,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `get_ledgers` | — | All ledgers (accounts) |
+| `get_ledgers` | `query?` | All ledgers, or (with `query`) a fuzzy-ranked shortlist of the closest-matching ledger names — top 20, best match first |
 | `get_stock_items` | — | All stock items |
 | `get_groups` | — | Account groups (e.g. Sundry Debtors, Fixed Assets) |
 | `get_voucher_types` | — | Configured voucher types (Payment, Sales, Journal, ...) |
@@ -284,6 +284,9 @@ result, replaced whenever you call that report tool again.
 |---|---|---|
 | `get_audit_log` | `limit?` (default 50), `toolFilter?`, `writesOnly?`, `fromDate?`, `toDate?`, `company?`, `format?` (`'json'` default or `'summary'`) | Reads this connector's audit log — every tool call made through it, read or write, with timestamp, arguments, outcome (`success`/`error`/`denied`), and a best-effort company tag. `company` filters to one Tally company; `writesOnly` + a date range + `format: 'summary'` gives a compact reviewer-facing table instead of raw JSON — "what changed between these two dates" |
 | `get_health_check` | — | Reports whether Tally's gateway is actually reachable (not just "something answered" — this catches cases like Tally's own license server responding on a misconfigured port with an HTML page that looks like success), which company is open, the active `TALLY_URL`, current read-only/disabled-tools state, and the audit log's file path. Always allowed, even in read-only mode |
+| `preview_write` | `toolName`, `args` | Builds the exact XML any create_*/update_*/delete_*/`set_bill_of_materials` tool would send — without sending it. Returns a `previewId`, a plain-English description, and the raw XML, so a batch of changes can be reviewed before anything posts. Runs the same pre-checks the real tool would (e.g. the voucher-collision check on update_*/`delete_voucher`) at preview time. Never sends a write of its own, so it still works in read-only mode — unlike every other write tool |
+| `confirm_write` | `previewId` | Posts a previewed write to Tally, unchanged, using its `previewId`. The only tool that actually writes when a batch went through `preview_write` first. Single-use — a `previewId` already confirmed, or expired (15 minutes), fails rather than reposting |
+
 
 Every tool call — read or write — is appended to a local JSONL log file, so
 there's always a plain-text record of exactly what an agent did. All

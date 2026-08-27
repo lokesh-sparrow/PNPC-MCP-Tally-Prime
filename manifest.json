@@ -132,7 +132,9 @@
     { "name": "sync_voucher_items_to_sql", "description": "Pull voucher inventory line items (stock item, qty, rate, amount, godown, batch) for one date range into this session's in-memory SQL cache" },
     { "name": "query_sql", "description": "Run a read-only SQL SELECT query against the local cache populated by sync_to_sql" },
     { "name": "get_audit_log", "description": "Read this connector's append-only audit log of every tool call made through it" },
-    { "name": "get_health_check", "description": "Check whether Tally is reachable, a company is open, and what permission settings are currently active" }
+    { "name": "get_health_check", "description": "Check whether Tally is reachable, a company is open, and what permission settings are currently active" },
+    { "name": "preview_write", "description": "Build the exact XML any write tool would send without sending it, returning a preview ID for review before confirming" },
+    { "name": "confirm_write", "description": "Post a previously-built preview to Tally, using its preview ID" }
   ],
   "keywords": ["tally", "tallyprime", "accounting", "erp", "mcp"],
   "compatibility": {

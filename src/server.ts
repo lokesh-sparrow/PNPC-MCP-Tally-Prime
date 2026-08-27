@@ -48,11 +48,21 @@ const READ_ONLY_TOOLS = new Set([
   "get_purchase_register", "get_journal_register", "get_payment_register", "get_receipts_and_payments",
   "get_reorder_status", "get_vat_liability_summary", "get_gst_liability_summary", "get_ledger_vouchers", "sync_to_sql", "sync_vouchers_to_sql", "query_sql",
   "set_company", "set_period", "get_audit_log", "get_health_check",
+  // preview_write never sends a write to Tally (see its own description) —
+  // treated as read-only so it still works when read-only mode is on.
+  // confirm_write is deliberately NOT here; it's the tool that actually posts.
+  "preview_write",
 ]);
 
 function annotationsFor(toolName: string) {
   if (READ_ONLY_TOOLS.has(toolName)) {
     return { readOnlyHint: true, openWorldHint: false };
+  }
+  if (toolName === "confirm_write") {
+    // Wraps whatever write was previewed (create/update/delete) — can't know
+    // which in advance, so hint cautiously: potentially destructive, and
+    // never a safe repeat (a used-up preview_id fails rather than reposting).
+    return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
   }
   if (toolName.startsWith("delete_")) {
     // Deleting an already-gone target converges to the same end state either way.

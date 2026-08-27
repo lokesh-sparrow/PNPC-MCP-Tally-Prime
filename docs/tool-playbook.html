@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tally Connector Playbook</title>
-<meta name="description" content="Plain-English example prompts for all 83 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
+<meta name="description" content="Plain-English example prompts for all 85 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -353,13 +353,13 @@
     <p class="eyebrow"><a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme">PNPC-MCP-Tally-Prime</a> · Claude Desktop chat</p>
     <h1>The Tally Connector Playbook</h1>
     <p class="lede">
-      Every one of the 83 tools this connector gives Claude, with a plain-English
+      Every one of the 85 tools this connector gives Claude, with a plain-English
       example of the sentence you'd actually type in a Claude Desktop chat to use it.
       Nothing here is a command syntax — Claude reads your request and picks the
       right tool itself.
     </p>
     <div class="stat-row">
-      <div class="stat"><span class="n">83</span><span class="label">tools total</span></div>
+      <div class="stat"><span class="n">85</span><span class="label">tools total</span></div>
       <div class="stat"><span class="n">7</span><span class="label">categories</span></div>
       <div class="stat"><span class="n">v1.9.0</span><span class="label">current release</span></div>
     </div>
@@ -395,7 +395,7 @@
       id: "reports",
       note: "Ask about the books — nothing here changes anything in Tally.",
       tools: [
-        ["get_ledgers", "Lists every ledger (account) in the company.", "List all my ledgers"],
+        ["get_ledgers", "Lists every ledger (account) in the company, or fuzzy-searches for one by a rough name.", "Find the ledger for 'vro' — I don't remember the exact name Tally has it under"],
         ["get_stock_items", "Lists every stock item.", "Show me every stock item we have set up"],
         ["get_vouchers", "All vouchers in a date range — the Day Book, correctly scoped to the dates given.", "Show me every voucher from 1 Jan to 31 Mar 2024"],
         ["get_company_info", "Which company is currently open in Tally.", "Which Tally company is currently open?"],
@@ -508,7 +508,9 @@
         ["set_company", "Switches which Tally company subsequent calls operate on.", "Switch to the company 'ABC Trading LLC'"],
         ["set_period", "Switches Tally's active reporting period.", "Set the reporting period to the full 2024 financial year"],
         ["get_health_check", "Confirms Tally is reachable, which company is open, and whether read-only mode is on.", "Run a health check — is everything connected properly?"],
-        ["get_audit_log", "Reviews every tool call made through this connector, with outcome and (best-effort) company tag.", "Show me every write made through this connector in the last week"]
+        ["get_audit_log", "Reviews every tool call made through this connector, with outcome and (best-effort) company tag.", "Show me every write made through this connector in the last week"],
+        ["preview_write", "Builds the exact XML for any write tool without sending it — nothing touches Tally. Returns a preview_id to review before confirming.", "Before you post anything, draft these three invoices and show me exactly what each one will do first"],
+        ["confirm_write", "Posts a previewed write to Tally, using its preview_id. The only tool that actually writes when you've asked for a preview first.", "That all looks right — go ahead and confirm all three"]
       ]
     },
     {
