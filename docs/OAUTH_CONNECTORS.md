@@ -67,6 +67,8 @@ wording, but the pattern holds:
    `TALLY_MCP_TOKEN`.
 4. You're redirected back to the client, connected.
 
+Confirmed live end-to-end on all three:
+
 **Claude web:** Settings → Connectors → Add custom connector.
 
 **ChatGPT:** Settings → Security → Developer mode (Pro/Plus/Business/
@@ -80,9 +82,7 @@ Connector** → **Custom** → enter `<your-public-url>/mcp` as the MCP
 server URL → complete authentication (this is where the OAuth/DCR flow
 above runs). Custom MCP connectors are a paid-tier feature (SuperGrok/X
 Premium+ as of mid-2026) — if you don't see the option, that's the
-likely reason. (Exact menu wording changes over time; if you hit
-something unexpected, share what the screen shows and it can be mapped
-onto this same setup.)
+likely reason.
 
 ## Security notes
 
