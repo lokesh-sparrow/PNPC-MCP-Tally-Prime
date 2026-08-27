@@ -1,6 +1,6 @@
 {
   "name": "pnpc-mcp-tally-prime",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "PNPC's MCP server for reading from and writing to TallyPrime — ledgers, vouchers, inventory, and reports",
   "type": "module",
   "main": "dist/index.js",

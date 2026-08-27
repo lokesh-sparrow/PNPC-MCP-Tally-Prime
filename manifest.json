@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
