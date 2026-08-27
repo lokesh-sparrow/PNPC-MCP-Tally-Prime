@@ -3843,15 +3843,35 @@ async function assertVoucherUnambiguous(voucherType: string, voucherNumber: stri
 
 function checkImportResult(result: unknown): string {
   const cleaned = cleanTallyResult(result) as any;
-  const created = cleaned?.ENVELOPE?.HEADER?.CREATED ?? cleaned?.ENVELOPE?.BODY?.DATA?.CREATED;
-  const errors = cleaned?.ENVELOPE?.HEADER?.ERRORS ?? cleaned?.ENVELOPE?.BODY?.DATA?.ERRORS;
-  const exceptions = cleaned?.ENVELOPE?.HEADER?.EXCEPTIONS;
+  // Confirmed live: a real Import Data response from this Tally instance
+  // comes back as a bare {RESPONSE: {...}} object with no ENVELOPE wrapper
+  // at all — not the {ENVELOPE: {HEADER: {...}}} / {ENVELOPE: {BODY: {DATA:
+  // {...}}}} shapes this used to check exclusively. Those never matched a
+  // real response here, which meant EXCEPTIONS/ERRORS were never detected
+  // and every write — success or failure alike — printed a leading
+  // "Success." (the real values were still visible in the raw JSON dump
+  // underneath, so nothing was silently lost, but the leading word was
+  // flatly wrong on a failure). Check all three shapes, RESPONSE first
+  // since it's what's actually been observed.
+  const node = cleaned?.RESPONSE ?? cleaned?.ENVELOPE?.HEADER ?? cleaned?.ENVELOPE?.BODY?.DATA ?? {};
+  const created = node?.CREATED;
+  const errors = node?.ERRORS;
+  const exceptions = node?.EXCEPTIONS;
+  const lineError = node?.LINEERROR;
 
   if (errors && Number(errors) > 0) {
-    return `Failed. Tally reported ${errors} error(s). Raw response: ${JSON.stringify(cleaned)}`;
+    return (
+      `Failed. Tally reported ${errors} error(s).` +
+      (lineError ? ` ${lineError}` : "") +
+      ` Raw response: ${JSON.stringify(cleaned)}`
+    );
   }
   if (exceptions && Number(exceptions) > 0) {
-    return `Completed with ${exceptions} exception(s). Raw response: ${JSON.stringify(cleaned)}`;
+    return (
+      `Completed with ${exceptions} exception(s), created ${created ?? 0}.` +
+      (lineError ? ` ${lineError}` : "") +
+      ` Raw response: ${JSON.stringify(cleaned)}`
+    );
   }
   return `Success. Created: ${created ?? "unknown"}. Raw response: ${JSON.stringify(cleaned, null, 2)}`;
 }
