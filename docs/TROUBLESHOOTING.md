@@ -120,22 +120,28 @@ using earlier in the same session.
 
 Note: fixing the period resolved this for Material In/Out, Rejections
 In/Out, and Receipt Note. Delivery Note kept failing with the identical
-error afterward, on a date that worked for every other type including its
-own buying-side mirror (Receipt Note) — confirmed reproducible manually in
-Tally's own UI, so this is a separate, real, unresolved issue specific to
-Delivery Note in that company, not something `set_period` fixes. If
-`create_delivery_note`/`update_delivery_note` fail with this same error
-after confirming the period is right, that's this issue, not a new one.
+"Voucher date is missing" message afterward, on a date that worked for
+every other type including its own buying-side mirror (Receipt Note) —
+misleading in the same way as the period issue above, but for a different
+underlying cause: Delivery Note's numbering series had stopped
+auto-assigning voucher numbers in this company (see "Item-invoice voucher
+types... stop auto-numbering" below — Delivery Note turned out to be
+affected too, confirmed by reproducing the same block manually in Tally's
+UI and clearing it by typing a voucher number in by hand). **Fix:** same as
+that section — pass an explicit `voucherNumber` to `create_delivery_note`.
 
-### Item-invoice voucher types (Sales/Purchase/Credit Note/Debit Note) stop auto-numbering
+### Item-invoice voucher types (Sales/Purchase/Credit Note/Debit Note, and confirmed live also Delivery Note) stop auto-numbering
 Some Tally configurations (seen after a **Company Data →
 Rewrite** in at least one case) stop assigning voucher numbers to
 item-invoice-mode voucher types through the XML gateway specifically — the
-real error ("Voucher No. is missing") only shows in Tally's own Import Data
-UI, never in the gateway's response. Symptom: blank `EXCEPTIONS:1` on every
-create call. Fix: pass `voucherNumber` explicitly (check `get_vouchers` for
-the next free number of that voucher type) on every create call for that
-voucher type going forward.
+real error ("Voucher No. is missing" via the gateway, "Voucher date is
+missing" was the misleading message seen for Delivery Note specifically)
+only shows in Tally's own Import Data UI, never usefully in the gateway's
+response. Symptom: blank `EXCEPTIONS:1` on every create call. Fix: pass
+`voucherNumber` explicitly (check `get_vouchers` for the next free number
+of that voucher type) on every create call for that voucher type going
+forward — confirmed live this also fixes the equivalent `update_*` tool
+once a real voucher exists to update.
 
 ### A brand-new custom voucher type accepts vouchers with **no voucher number at all**
 `create_voucher_type` without an explicit `numberingMethod`
@@ -369,15 +375,14 @@ inventory-classified vouchers), not a gap.
 ## Verified-live tools
 
 `update_material_in`, `update_material_out`, `update_rejections_in`,
-`update_rejections_out`, `update_receipt_note`, `update_sales_order`,
-`update_purchase_order`, `update_sales_quotation`,
+`update_rejections_out`, `update_receipt_note`, `update_delivery_note`,
+`update_sales_order`, `update_purchase_order`, `update_sales_quotation`,
 `update_job_work_in_order`, and `update_job_work_out_order` were each
 confirmed live end to end (create a real test voucher, then update it,
 then confirm `ALTERED:1`) once the active-period issue above was
-identified and fixed. `update_delivery_note` is built the same way and is
-structurally identical to the verified `update_receipt_note`, but is
-currently blocked from live verification by the separate Delivery Note
-issue noted above.
+identified and fixed, and — for Delivery Note specifically — once an
+explicit `voucherNumber` worked around its broken auto-numbering (see
+"Item-invoice voucher types... stop auto-numbering" below).
 
 `set_bill_of_materials`, `create_material_in`, `create_material_out`,
 `create_rejections_in`, and `create_rejections_out` were originally built

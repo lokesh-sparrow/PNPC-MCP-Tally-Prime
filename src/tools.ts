@@ -1414,7 +1414,11 @@ export const tools = [
       "even though the voucher won't show up in any report or be findable by get_vouchers/delete_voucher until " +
       "the type is turned on. Once active, get_vouchers and delete_voucher find it correctly. " +
       "get_ledger_vouchers will still never show it, by design, not a gap — that tool deliberately excludes " +
-      "inventory-classified vouchers (see its own description).",
+      "inventory-classified vouchers (see its own description). ALSO confirmed live: Delivery Note can silently " +
+      "stop auto-numbering via the gateway, same failure mode as item-invoice types (Sales/Purchase/Credit " +
+      "Note/Debit Note) — symptom is a blank EXCEPTIONS:1 with no useful error text (the real cause, 'Voucher " +
+      "No. is missing', only shows in Tally's own Import Data UI). If creation fails this way, pass " +
+      "voucherNumber explicitly (check get_vouchers for the next free number of this voucher type).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1439,7 +1443,14 @@ export const tools = [
             required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but this connector confirmed live " +
+            "that Delivery Note can stop auto-numbering via the gateway (same as item-invoice types). If creation " +
+            "fails with a blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this voucher " +
+            "type and retry with voucherNumber set to the next one.",
+        },
       },
       required: ["date", "partyLedger", "items"],
     },
