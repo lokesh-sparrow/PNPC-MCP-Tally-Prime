@@ -75,9 +75,14 @@ accepts remote HTTPS endpoints — it cannot run a local stdio server the
 way Claude Desktop can, so this remote/OAuth path is the *only* way to
 reach this connector from ChatGPT, not an alternative to a local option.
 
-**Grok:** equivalent connector/tools settings — same URL, same flow.
-(Exact menu wording changes; if you hit something unexpected, share what
-the screen shows and it can be mapped onto this same setup.)
+**Grok:** [grok.com/connectors](https://grok.com/connectors) → **New
+Connector** → **Custom** → enter `<your-public-url>/mcp` as the MCP
+server URL → complete authentication (this is where the OAuth/DCR flow
+above runs). Custom MCP connectors are a paid-tier feature (SuperGrok/X
+Premium+ as of mid-2026) — if you don't see the option, that's the
+likely reason. (Exact menu wording changes over time; if you hit
+something unexpected, share what the screen shows and it can be mapped
+onto this same setup.)
 
 ## Security notes
 

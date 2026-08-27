@@ -44,7 +44,7 @@ Get the latest release — no cloning or building required:
 | Claude Desktop | ✔️ | ✔️ |
 | Claude web (claude.ai) | — | ✔️ |
 | ChatGPT (Developer Mode) | — | ✔️ |
-| Grok | — | ✔️ |
+| Grok (SuperGrok / X Premium+) | — | ✔️ |
 
 (Remote/cloud deployment is possible via the HTTP entry point — see
 [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) and
