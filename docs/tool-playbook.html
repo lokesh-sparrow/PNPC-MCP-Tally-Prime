@@ -574,6 +574,57 @@
     section.appendChild(cards);
     main.appendChild(section);
   });
+
+  // Document-to-voucher is a Skill, not a tool — appended after the
+  // DATA-driven categories above rather than living in DATA itself, so it
+  // reads as "here's a capability" instead of "tool #86."
+  (function renderDocImportSection() {
+    const tocLink = document.createElement("a");
+    tocLink.href = "#doc-import";
+    tocLink.innerHTML = `<span>Document-to-voucher</span><span class="count">Skill</span>`;
+    tocList.appendChild(tocLink);
+
+    const section = document.createElement("section");
+    section.className = "category";
+    section.id = "doc-import";
+
+    const head = document.createElement("div");
+    head.className = "cat-head";
+    head.innerHTML = `<h2>Document-to-voucher</h2><span class="cat-count mono">Skill, not a tool</span>`;
+    section.appendChild(head);
+
+    const note = document.createElement("p");
+    note.className = "cat-note";
+    note.innerHTML =
+      `Point Claude at a folder of a client's paperwork and it reads, classifies, and drafts a full batch of ` +
+      `vouchers — nothing posts until you review and approve it. This needs the <code>tally-doc-import</code> ` +
+      `Skill added to Claude separately from this connector — see ` +
+      `<a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/tree/main/skills/tally-doc-import">skills/tally-doc-import</a> for setup.`;
+    section.appendChild(note);
+
+    const cards = document.createElement("div");
+    cards.className = "cards";
+    const examples = [
+      ["JPG / scan", "Using tally-doc-import, read this JPG bill, draft the voucher with preview_write, and show me the preview before posting."],
+      ["XLSX bank / register", "Using tally-doc-import, convert this XLSX with xlsx_to_csv.py, draft the rows as vouchers with preview_write, and show the batch table. Do not confirm_write until I say so."],
+      ["Mixed folder", "Using tally-doc-import, process this folder (PDF, JPG, XLSX). Preview everything. Post nothing until I approve."],
+    ];
+    examples.forEach(([label, prompt]) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.tabIndex = 0;
+      card.innerHTML = `
+        <div class="card-head">
+          <span class="dot" style="background:${dotColor.write}"></span>
+          <span class="tool-name">${label}</span>
+        </div>
+        <div class="prompt"><span class="say">Try saying</span>&#8220;${prompt}&#8221;</div>
+      `;
+      cards.appendChild(card);
+    });
+    section.appendChild(cards);
+    main.appendChild(section);
+  })();
 </script>
 
 </body>
