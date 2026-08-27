@@ -75,37 +75,29 @@ Desktop runs the MCP server internally for you.
 > **Read-only mode is on by default.** A fresh install can read reports, ledgers, and vouchers immediately, but every write tool (`create_*`, `update_*`, `delete_*`) will be refused until you go to this connector's settings, turn Read-only mode off, and **fully quit and reopen Claude Desktop** — saving the settings screen alone isn't enough.
 
 If step 4–5 don't produce that confirmation dialog (accepted silently, nothing
-visible happens), see **Troubleshooting** below — `Install Unpacked Extension`
-on the same screen, pointed at the extracted `PNPC-MCP-Tally-Prime-unpacked-*.zip`
-(same contents as the `.mcpb`, already built — not GitHub's auto-generated
-"Source code (zip)", which is unbuilt source and won't work here) from the
-[latest release](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest),
-is the reliable fallback.
+visible happens), see **Troubleshooting** below — clone this repo, run
+`npm install && npm run build` ([Building from source](#building-from-source)),
+then use `Install Unpacked Extension` on the same screen, pointed at the repo
+folder itself.
 
-### Installation via config file (via Developer menu)
+### Other MCP clients (no `.mcpb` support — Perplexity Desktop, etc.)
 
-1. Claude Desktop → menu → **File → Settings → Developer**
-2. This opens a File Explorer window at the config location — right-click **`claude_desktop_config.json`** → **Edit** (Notepad)
-3. Add:
-   ```json
-   {
-     "mcpServers": {
-       "PNPC-MCP-Tally-Prime": {
-         "command": "node",
-         "args": ["D:\\Path\\To\\PNPC-MCP-Tally-Prime\\dist\\index.js"]
-       }
-     }
-   }
-   ```
-   (Use double backslashes in the path, as shown.)
-4. Save, then fully quit Claude Desktop (**File → Exit**) and relaunch it
-5. Verify via the **Tools** icon, same as above
-
-### Perplexity Desktop / other MCP clients
-
-Any MCP client that accepts a local stdio server config uses the same
-`command`/`args` JSON shown above. See your client's own docs for exactly
-where that config lives.
+Clients without a one-click extension format read a plain JSON config
+pointing at the built server directly. First clone this repo and run
+`npm install && npm run build` ([Building from source](#building-from-source))
+— `dist/index.js` only exists after that build step. Then add:
+```json
+{
+  "mcpServers": {
+    "PNPC-MCP-Tally-Prime": {
+      "command": "node",
+      "args": ["D:\\Path\\To\\PNPC-MCP-Tally-Prime\\dist\\index.js"]
+    }
+  }
+}
+```
+(Use double backslashes in the path, as shown.) Where this config file
+lives, and how to reload it, depends on the client — check its own docs.
 
 ## Setup (Cloud)
 
