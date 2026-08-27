@@ -29,6 +29,13 @@ multiple separate users/clients.
    themselves, and clients will fail to complete the flow if this points
    at the wrong address.
 
+   > **On a no-domain Quick Tunnel**, this URL is random and changes every
+   > time you restart the tunnel (see [CLOUDFLARE_TUNNEL.md](./CLOUDFLARE_TUNNEL.md#which-path-do-i-need)).
+   > That's not just "log in again" — the client's whole connector entry
+   > pointed at the *old* URL, which no longer exists, so you have to
+   > **remove and re-add the custom connector from scratch** with the new
+   > URL each time you restart. A fixed domain avoids this entirely.
+
 ```bash
 TALLY_MCP_TOKEN=<your-token> PUBLIC_URL=https://your-tunnel-or-domain npm run start:http
 ```

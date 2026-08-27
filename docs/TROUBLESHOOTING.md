@@ -404,6 +404,32 @@ that setting → Yes. The underlying write succeeds either way; without
 that setting on, Tally's UI just won't show a Components field to look
 at it with.
 
+## Remote connector issues (claude.ai / ChatGPT / Grok)
+
+### A previously-working connector suddenly can't connect / needs re-login
+
+Almost always the tunnel's public URL changed. If you're on a **Quick
+Tunnel** (no domain — see
+[CLOUDFLARE_TUNNEL.md](./CLOUDFLARE_TUNNEL.md#which-path-do-i-need)),
+its `https://<random-words>.trycloudflare.com` address is only valid for
+that one running session — restarting the tunnel (reboot, crash, closed
+terminal) issues a **brand-new random URL**. The client's connector entry
+is still pointed at the old, now-dead URL. This isn't a login/token
+problem — re-authenticating won't fix it. You have to **remove the old
+custom connector and re-add it** with the new URL (see
+[OAUTH_CONNECTORS.md](./OAUTH_CONNECTORS.md)). A fixed domain (the Named
+Tunnel path) avoids this entirely, since the URL never changes.
+
+### `.well-known/oauth-authorization-server` returns URLs that don't match what I'm connecting to
+
+`PUBLIC_URL` is set wrong (or unset, defaulting to `http://localhost:<PORT>`)
+— the OAuth endpoints advertise absolute URLs built from that variable, so
+if it doesn't exactly match the address the client actually reaches you
+on (including `https://` and no trailing slash), the client's discovery
+step will fail silently or loop. Set `PUBLIC_URL` to the exact
+externally-reachable URL (your tunnel or domain) before starting the
+server — see [HTTP_DEPLOYMENT.md](./HTTP_DEPLOYMENT.md#environment-variables).
+
 ## Extension install issues
 
 **Clicking "Install Extension" and picking the `.mcpb` produces no dialog, no error, just the same screen.**
