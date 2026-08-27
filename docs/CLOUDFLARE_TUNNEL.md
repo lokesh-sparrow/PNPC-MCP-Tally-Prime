@@ -11,7 +11,29 @@ Cloudflare and keeps it open — Cloudflare then routes traffic for a URL you
 choose back down that same connection. Nothing on your router needs to be
 opened or forwarded, and Cloudflare issues the HTTPS certificate for you.
 
-## Prerequisites
+## Which path do I need?
+
+Cloudflare Tunnel has two modes — pick based on whether you own a domain:
+
+| | **I have a domain on Cloudflare** | **I don't have a domain** |
+|---|---|---|
+| Setup | Steps 1–9 below (Named Tunnel) | One command — see box below (Quick Tunnel) |
+| URL | Fixed, e.g. `tally.yourdomain.com` — stays the same forever | Random, e.g. `something-random.trycloudflare.com` |
+| **URL after a restart** | **Same URL every time** | **Changes to a new random URL every time you restart the tunnel** — anything pointed at the old URL (a saved claude.ai connector, a bookmark) breaks and needs re-pointing |
+| Best for | Something you'll keep running long-term | Trying this out, or short one-off sessions you start/stop yourself |
+
+> **No domain? Quick Tunnel — one command, no Cloudflare account needed:**
+> ```bash
+> cloudflared tunnel --url http://localhost:3939
+> ```
+> It prints a `https://<random-words>.trycloudflare.com` URL immediately —
+> use that instead of `tally.yourdomain.com` everywhere in steps 6–9 below
+> (skip steps 1–5, they're only for the domain path). Remember the
+> restart caveat above: if you stop this command and run it again later,
+> you'll get a **different** URL and have to update anywhere you'd
+> connected the old one (e.g. re-add the custom connector in claude.ai).
+
+## Prerequisites (Named Tunnel — domain path only; skip if using Quick Tunnel above)
 
 - This connector's code cloned and built (`npm install && npm run build`)
   on the same machine as TallyPrime, or one that can reach it — see
@@ -113,6 +135,10 @@ server is actually running on port 3939 first — the tunnel just forwards,
 it doesn't fix a connector that isn't up.
 
 ## 8. Run both as background services (don't rely on open terminal windows)
+
+**Skip this step if you're on the Quick Tunnel (no-domain) path** — making
+a Quick Tunnel "permanent" defeats its own purpose, since its URL changes
+on every restart anyway. This step is only useful with a fixed domain.
 
 Two processes need to survive reboots and terminal closures:
 `cloudflared tunnel run` and `npm run start:http`.
