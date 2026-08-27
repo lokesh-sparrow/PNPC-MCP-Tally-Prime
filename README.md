@@ -46,10 +46,11 @@ Get the latest release — no cloning or building required:
 | ChatGPT (Developer Mode) | — | ✔️ |
 | Grok (SuperGrok / X Premium+) | — | ✔️ |
 
-(Remote/cloud deployment is possible via the HTTP entry point — see
+(Remote/cloud deployment runs via the HTTP entry point, confirmed live
+against all three remote clients above — see
 [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) and
-[docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) — but local is the
-supported, recommended path for most users. Claude Desktop is the only
+[docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md). Local is still the
+simpler, recommended path if you're only using Claude Desktop. Claude Desktop is the only
 client here with a local/no-network install option (the `.mcpb`
 extension); claude.ai, ChatGPT, and Grok all connect only to remote HTTPS
 MCP endpoints — none of them can run a local stdio server on your PC the
