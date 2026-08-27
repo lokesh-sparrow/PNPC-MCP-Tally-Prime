@@ -406,6 +406,7 @@ manifest.json     Claude Desktop Extension manifest (manifest_version 0.3)
 - [docs/CLOUDFLARE_TUNNEL.md](docs/CLOUDFLARE_TUNNEL.md) — exposing that server without opening a router port
 - [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) — connecting from claude.ai, ChatGPT, or Grok
 - [docs/EXTENSION_PACKAGING.md](docs/EXTENSION_PACKAGING.md) — packaging as a Claude Desktop Extension
+- [skills/tally-doc-import](skills/tally-doc-import) — a Claude Skill that turns a folder of client paperwork (invoices, bank statements, credit/debit notes) into a reviewed batch of vouchers, using `preview_write`/`confirm_write` so nothing posts without approval
 
 ## Roadmap / not yet supported
 
