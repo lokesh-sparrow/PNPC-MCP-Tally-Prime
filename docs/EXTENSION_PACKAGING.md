@@ -1,25 +1,25 @@
-# Claude Desktop Extension (.dxt) Packaging
+# Claude Desktop Extension (.mcpb) Packaging
 
 [`manifest.json`](../manifest.json) at the repo root makes this installable
 as a one-click Claude Desktop Extension instead of hand-editing
 `claude_desktop_config.json`.
 
-## Building a .dxt file
+## Building a .mcpb file
 
 Install Anthropic's packaging CLI and run it from the repo root:
 
 ```bash
-npm install -g @anthropic-ai/dxt
+npm install -g @anthropic-ai/mcpb
 npm run build
-dxt pack . tally-mcp-server.dxt
+mcpb pack . PNPC-MCP-Tally-Prime.mcpb
 ```
 
 This bundles `manifest.json`, `dist/`, and `node_modules/` into a single
-`.dxt` file.
+`.mcpb` file.
 
 ## Installing
 
-Double-click the resulting `.dxt` file (or drag it into Claude Desktop's
+Double-click the resulting `.mcpb` file (or drag it into Claude Desktop's
 Settings → Extensions). Claude Desktop reads `manifest.json`, prompts for
 the `tally_url` setting (defaults to `http://localhost:9000`), and launches
 `dist/index.js` over stdio automatically — no manual JSON config editing.
@@ -37,7 +37,7 @@ the `tally_url` setting (defaults to `http://localhost:9000`), and launches
   Run `npx mcpb validate manifest.json` after editing this block — it
   validates against the real MCPB schema and catches typos before packing.
 - This packages the **stdio** entry point ([`src/index.ts`](../src/index.ts)),
-  not the HTTP one — `.dxt` extensions are always launched locally by Claude
+  not the HTTP one — `.mcpb` extensions are always launched locally by Claude
   Desktop. For remote use, see [HTTP_DEPLOYMENT.md](./HTTP_DEPLOYMENT.md)
   instead.
 
@@ -45,4 +45,4 @@ the `tally_url` setting (defaults to `http://localhost:9000`), and launches
 
 Bump `version` in both `package.json` and `manifest.json` together — Claude
 Desktop uses the manifest version to detect updates when you re-import a
-new `.dxt`.
+new `.mcpb`.

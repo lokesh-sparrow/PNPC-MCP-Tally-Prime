@@ -35,8 +35,10 @@ Claude Desktop (stdio)   or   remote MCP client (HTTP)
 
 - **`index.ts`** — stdio entry point for local Claude Desktop use.
 - **`http-server.ts`** — HTTP entry point for remote use (Express +
-  Streamable HTTP transport, optional bearer-token auth). See
-  [HTTP_DEPLOYMENT.md](./HTTP_DEPLOYMENT.md).
+  Streamable HTTP transport, optional bearer-token auth, plus a minimal
+  OAuth 2.1 layer on top for clients that require it — claude.ai, ChatGPT,
+  Grok). See [HTTP_DEPLOYMENT.md](./HTTP_DEPLOYMENT.md) and
+  [OAUTH_CONNECTORS.md](./OAUTH_CONNECTORS.md).
 - **`server.ts`** — shared MCP `Server` construction (tool list + tool-call
   handlers), used by both entry points so they can't drift apart.
 - **`tools.ts`** — the only file that knows about Tally's *business* shapes

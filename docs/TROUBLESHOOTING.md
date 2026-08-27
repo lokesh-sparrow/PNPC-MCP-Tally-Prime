@@ -404,12 +404,6 @@ that setting → Yes. The underlying write succeeds either way; without
 that setting on, Tally's UI just won't show a Components field to look
 at it with.
 
-**Job Work In/Out Order vouchers were deliberately not built** — no
-verified real-world XML example was found, and there's no existing
-"Order"-type voucher tool in this project to model the due-date/lot
-structure from. Guessing that structure blind risked shipping something
-broken rather than just incomplete.
-
 ## Extension install issues
 
 **Clicking "Install Extension" and picking the `.mcpb` produces no dialog, no error, just the same screen.**
