@@ -2603,13 +2603,13 @@ export const tools = [
     name: "preview_write",
     description:
       "Build the exact XML for any write tool WITHOUT sending it to Tally — nothing is touched. Returns a " +
-      "preview_id plus a plain-English description and the raw XML, so you (or whoever's reviewing) can see " +
+      "previewId plus a plain-English description and the raw XML, so you (or whoever's reviewing) can see " +
       "precisely what would happen before it happens. Use this instead of calling a create_*/update_*/delete_* " +
       "tool directly whenever you want a human to review a batch of changes first — e.g. drafting several " +
       "vouchers from a folder of client documents, where posting the wrong one is costly. Every applicable " +
       "safety check this tool would normally run (e.g. the voucher-type collision check on update_*/delete_voucher) " +
       "runs now, at preview time, so the preview already reflects any refusal. A preview expires after 15 minutes " +
-      "and is single-use — call confirm_write with its preview_id to actually post it, or just don't confirm it " +
+      "and is single-use — call confirm_write with its previewId to actually post it, or just don't confirm it " +
       "if it's wrong. Never touches Tally with a write of its own (a create_* preview makes no gateway call at " +
       "all; an update_*/delete_* preview only makes the same read-only collision-check query that tool would " +
       "normally make) — so unlike every other write tool, preview_write still works even when read-only mode is " +
@@ -2636,13 +2636,13 @@ export const tools = [
     name: "confirm_write",
     description:
       "Post a previously-built preview to Tally — this is the only tool that actually writes, when the batch " +
-      "went through preview_write first. Takes the preview_id from a prior preview_write call and sends that " +
-      "exact XML, unchanged, to Tally. A preview_id can only be confirmed once — reusing an already-confirmed " +
+      "went through preview_write first. Takes the previewId from a prior preview_write call and sends that " +
+      "exact XML, unchanged, to Tally. A previewId can only be confirmed once — reusing an already-confirmed " +
       "or expired one fails rather than silently reposting or reusing stale data.",
     inputSchema: {
       type: "object",
       properties: {
-        previewId: { type: "string", description: "The preview_id returned by preview_write." },
+        previewId: { type: "string", description: "The previewId returned by preview_write." },
       },
       required: ["previewId"],
     },
@@ -5093,7 +5093,7 @@ export async function handleTool(
       const entry = pendingWrites.get(previewId);
       if (!entry) {
         throw new Error(
-          `No pending write found for preview_id '${previewId}' — it was never issued by preview_write, has ` +
+          `No pending write found for previewId '${previewId}' — it was never issued by preview_write, has ` +
             `already been confirmed (each preview is single-use), or expired (previews last 15 minutes). ` +
             `Call preview_write again to get a fresh one.`
         );

@@ -90,6 +90,24 @@ server:
 
 ## Writes that "succeed" but nothing visible happens
 
+### A write result said "Success" on a real failure (fixed as of v1.10.0)
+Every write tool shares one function to turn Tally's raw response into the
+text message you actually see. That function only ever checked for an
+`ENVELOPE.HEADER`/`ENVELOPE.BODY.DATA`-wrapped response — but a real Import
+Data response from this Tally instance comes back as a bare
+`{RESPONSE: {...}}` object with no `ENVELOPE` wrapper at all. Neither shape
+it checked for ever matched, so `CREATED`/`ERRORS`/`EXCEPTIONS` were never
+actually read, and every write — success or real failure alike — printed a
+leading **"Success. Created: unknown."** The true `EXCEPTIONS`/`ERRORS`
+count and any `LINEERROR` text were still visible in the raw JSON dump
+further down the same message, so nothing was silently lost — but the
+leading sentence flatly contradicted the JSON sitting right next to it on
+a real failure. Confirmed live and fixed in v1.10.0: the message now
+checks the `RESPONSE` shape first, correctly reports "Completed with N
+exception(s)" or "Failed" when that's what actually happened, and surfaces
+`LINEERROR` text directly in the summary line instead of requiring a read
+of the raw JSON to find it.
+
 ### `CREATED:0`, `EXCEPTIONS:1`, no error text at all
 This is the hardest failure mode — Tally's gateway gives zero explanation.
 The most common cause: **the company has godown/batch
@@ -222,6 +240,15 @@ that happened to share the same number and date, with no error. Every
 `assertVoucherUnambiguous` check first and **refuses** if a collision exists
 — resolve it in Tally (renumber one of them) rather than looking for a way
 around the refusal.
+
+### `confirm_write` fails with "No pending write found for previewId"
+Two causes, both by design: the `previewId` was already confirmed once
+(each preview is single-use — replaying it fails rather than silently
+reposting), or more than 15 minutes passed since `preview_write` built it
+(previews are in-memory and session-scoped, same lifetime as the SQL
+cache — gone on restart, and pruned automatically once they're this old).
+Either way, the fix is the same: call `preview_write` again for that exact
+change and confirm the fresh `previewId` promptly.
 
 ## Naming & exact-match rules
 

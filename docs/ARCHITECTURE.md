@@ -43,7 +43,10 @@ Claude Desktop (stdio)   or   remote MCP client (HTTP)
   handlers), used by both entry points so they can't drift apart.
 - **`tools.ts`** — the only file that knows about Tally's *business* shapes
   (which report name to use, which fields to fetch, how to build a
-  voucher). This is where you add a new tool.
+  voucher). This is where you add a new tool. Also holds `preview_write`/
+  `confirm_write`'s state: an in-memory `previewId -> XML` map with a
+  15-minute TTL, same session-only lifetime as `db.ts`'s SQL cache below
+  — gone on restart.
 - **`templates.ts`** — loads and renders the Nunjucks templates in
   [`templates/`](../templates/) (auto-escaping on, so no manual XML
   escaping needed in `tools.ts`).

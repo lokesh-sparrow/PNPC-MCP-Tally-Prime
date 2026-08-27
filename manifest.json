@@ -50,7 +50,7 @@
   },
   "tools_generated": false,
   "tools": [
-    { "name": "get_ledgers", "description": "Get all ledgers (accounts) from TallyPrime" },
+    { "name": "get_ledgers", "description": "Get all ledgers (accounts) from TallyPrime, or fuzzy-search by name with an optional query" },
     { "name": "get_stock_items", "description": "Get all stock items from TallyPrime" },
     { "name": "get_vouchers", "description": "Get vouchers (Day Book) from TallyPrime filtered by date range" },
     { "name": "get_company_info", "description": "Get the currently open company info from TallyPrime" },
