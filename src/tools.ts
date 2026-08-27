@@ -515,7 +515,10 @@ export const tools = [
     description:
       "Create a Stock Journal voucher in TallyPrime, moving inventory from one or more source stock items to " +
       "one or more destination stock items (transfer, manufacturing-style conversion with multiple raw materials " +
-      "consumed and/or multiple finished/by-products produced, etc). Inventory-only — no ledger entries.",
+      "consumed and/or multiple finished/by-products produced, etc). Inventory-only — no ledger entries. " +
+      "Required if the company has multi-godown tracking: pass godown on every source/destination line — " +
+      "omitting it fails silently (blank EXCEPTIONS:1, no error text) even though the schema marks it optional " +
+      "(confirmed live pattern across every inventory-line tool in this connector).",
     inputSchema: {
       type: "object",
       properties: {
@@ -531,7 +534,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity consumed" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is issued from (optional)" },
+              godown: { type: "string", description: "Godown this line is issued from. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -547,7 +550,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity produced" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is received into (optional)" },
+              godown: { type: "string", description: "Godown this line is received into. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -576,7 +579,12 @@ export const tools = [
         },
         voucherNumber: {
           type: "string",
-          description: "Explicit voucher number. Normally omit and let Tally auto-number.",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Stock Journal). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one.",
         },
         voucherType: {
           type: "string",
@@ -613,7 +621,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity consumed" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is issued from (optional)" },
+              godown: { type: "string", description: "Godown this line is issued from. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -629,7 +637,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity produced" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is received into (optional)" },
+              godown: { type: "string", description: "Godown this line is received into. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -674,7 +682,9 @@ export const tools = [
       "posting (this is Tally's job-work memorandum tracking, not a purchase). Uses Tally's native 'Multi " +
       "Consumption Voucher View' shape. EXTRAPOLATED from a genuine Tally-exported XML template for this exact " +
       "voucher type, not verified against a real manually-created example in this project — verify carefully " +
-      "after use, especially on a company with godown/batch tracking enabled (pass godown on every item).",
+      "after use, especially on a company with godown/batch tracking enabled (pass godown on every item). If creation fails with " +
+      "LINEERROR 'Voucher date is missing' even though the date field is set correctly, the date is outside " +
+      "Tally's active period (Alt+F2) — call set_period to cover it and retry (confirmed live).",
     inputSchema: {
       type: "object",
       properties: {
@@ -697,7 +707,15 @@ export const tools = [
             required: ["stockItem", "qty", "rate", "unit"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Material In). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one.",
+        },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -742,7 +760,9 @@ export const tools = [
     description:
       "Create a Material Out voucher in TallyPrime — records stock sent out to a job worker for processing, " +
       "tracked against that party's ledger without a real accounting posting (job-work memorandum tracking, not " +
-      "a sale). Mirror of create_material_in. Same EXTRAPOLATED caveat and godown requirement apply.",
+      "a sale). Mirror of create_material_in. Same EXTRAPOLATED caveat and godown requirement apply. If creation " +
+      "fails with LINEERROR 'Voucher date is missing' even though the date field is set correctly, the date is " +
+      "outside Tally's active period (Alt+F2) — call set_period to cover it and retry (confirmed live).",
     inputSchema: {
       type: "object",
       properties: {
@@ -765,7 +785,15 @@ export const tools = [
             required: ["stockItem", "qty", "rate", "unit"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Material Out). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one.",
+        },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -810,7 +838,9 @@ export const tools = [
       "Sales/Purchase item line but with no party ledger. EXTRAPOLATED: no confirmed real-world XML example was " +
       "available for this exact voucher type — built by analogy to Tally's other inventory-only voucher shapes " +
       "(Physical Stock). Verify carefully after use, and expect to need godown on every item if the company has " +
-      "location tracking enabled.",
+      "location tracking enabled. If creation fails with LINEERROR 'Voucher date is missing' even though the " +
+      "date field is set correctly, the date is outside Tally's active period (Alt+F2) — call set_period to " +
+      "cover it and retry (confirmed live).",
     inputSchema: {
       type: "object",
       properties: {
@@ -832,7 +862,15 @@ export const tools = [
             required: ["stockItem", "qty", "rate", "unit"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Rejections In). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one.",
+        },
       },
       required: ["date", "items"],
     },
@@ -873,7 +911,9 @@ export const tools = [
     description:
       "Create a Rejections Out voucher in TallyPrime — records goods you're rejecting and returning outward " +
       "(e.g. back to a supplier, or components you're sending back to a job worker as defective). Mirror of " +
-      "create_rejections_in. Same EXTRAPOLATED caveat and godown requirement apply.",
+      "create_rejections_in. Same EXTRAPOLATED caveat and godown requirement apply. If creation fails with " +
+      "LINEERROR 'Voucher date is missing' even though the date field is set correctly, the date is outside " +
+      "Tally's active period (Alt+F2) — call set_period to cover it and retry (confirmed live).",
     inputSchema: {
       type: "object",
       properties: {
@@ -895,7 +935,15 @@ export const tools = [
             required: ["stockItem", "qty", "rate", "unit"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number. Normally omit and let Tally auto-number." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Rejections Out). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one.",
+        },
       },
       required: ["date", "items"],
     },
@@ -1094,7 +1142,7 @@ export const tools = [
               rate: { type: "number" },
               unit: { type: "string" },
               salesLedger: { type: "string" },
-              godown: { type: "string" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1198,7 +1246,7 @@ export const tools = [
               rate: { type: "number" },
               unit: { type: "string" },
               purchaseLedger: { type: "string" },
-              godown: { type: "string" },
+              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_purchase_invoice)." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1500,7 +1548,9 @@ export const tools = [
       "as create_purchase_invoice (stock item, quantity, rate, Purchase ledger per line) but ISINVOICE is set to " +
       "No and there's no VAT/tax line — mirror of create_delivery_note on the buying side. Same caveat as " +
       "create_delivery_note: the voucher type must be active in the company first, or it won't show up in " +
-      "get_vouchers/delete_voucher until it is. get_ledger_vouchers will still never show it, by design.",
+      "get_vouchers/delete_voucher until it is. get_ledger_vouchers will still never show it, by design. If " +
+      "creation fails with LINEERROR 'Voucher date is missing' even though the date field is set correctly, the " +
+      "date is outside Tally's active period (Alt+F2) — call set_period to cover it and retry (confirmed live).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1525,7 +1575,15 @@ export const tools = [
             required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
           },
         },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Receipt Note). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one.",
+        },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1610,7 +1668,15 @@ export const tools = [
           },
         },
         orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber; can be any value the customer/business uses to reference this order." },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Sales Order). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one. Distinct from orderNumber.",
+        },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
     },
@@ -1693,7 +1759,15 @@ export const tools = [
           },
         },
         orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber; can be any value the business uses to reference this order." },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Purchase Order). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one. Distinct from orderNumber.",
+        },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
     },
@@ -1790,7 +1864,15 @@ export const tools = [
           },
         },
         orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber." },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Job Work In Order). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one. Distinct from orderNumber.",
+        },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
     },
@@ -1901,7 +1983,15 @@ export const tools = [
           },
         },
         orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber." },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Job Work Out Order). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one. Distinct from orderNumber.",
+        },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
     },
@@ -1992,7 +2082,15 @@ export const tools = [
           },
         },
         orderNumber: { type: "string", description: "REQUIRED — the order reference shown as 'Order no.' in Tally's UI. Independent of voucherNumber." },
-        voucherNumber: { type: "string", description: "Explicit voucher number — normally omit and let Tally auto-number. Distinct from orderNumber." },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number. Normally omit and let Tally auto-number — but some Tally configurations stop " +
+            "auto-numbering certain voucher types via the XML gateway (confirmed live for item-invoice types; " +
+            "unconfirmed either way for Sales Quotation). If creation fails with a blank EXCEPTIONS:1, check " +
+            "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
+            "to the next one. Distinct from orderNumber.",
+        },
       },
       required: ["date", "partyLedger", "items", "orderNumber"],
     },
@@ -2400,7 +2498,9 @@ export const tools = [
       "UNSIGNED as Tally stores them on the inventory entry; use is_deemed_positive together with voucher_type " +
       "to work out inward vs outward direction. A voucher with no stock items (Payment, Journal, etc.) " +
       "contributes zero rows, not an empty one. Same chunked, additive-by-date-range model and same timeout " +
-      "caution as sync_vouchers_to_sql — quarterly/monthly chunks for a busy company.",
+      "caution as sync_vouchers_to_sql — quarterly/monthly chunks for a busy company. If you switch companies " +
+      "(set_company), sync again — the cache doesn't track which company a row came from, so don't query across " +
+      "a company switch without re-syncing first.",
     inputSchema: {
       type: "object",
       properties: {
