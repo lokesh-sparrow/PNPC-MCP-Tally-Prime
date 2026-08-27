@@ -45,6 +45,7 @@ Get the latest release — no cloning or building required:
 | Claude web (claude.ai) | — | ✔️ |
 | ChatGPT (Developer Mode) | — | ✔️ |
 | Grok | — | ✔️ |
+| Perplexity Desktop / other stdio-config MCP clients | ✔️ | — |
 
 (Remote/cloud deployment is possible via the HTTP entry point — see
 [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) and
@@ -75,7 +76,9 @@ Desktop runs the MCP server internally for you.
 
 If step 4–5 don't produce that confirmation dialog (accepted silently, nothing
 visible happens), see **Troubleshooting** below — `Install Unpacked Extension`
-on the same screen, pointed at the extracted "Source code (zip)" from the
+on the same screen, pointed at the extracted `PNPC-MCP-Tally-Prime-unpacked-*.zip`
+(same contents as the `.mcpb`, already built — not GitHub's auto-generated
+"Source code (zip)", which is unbuilt source and won't work here) from the
 [latest release](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest),
 is the reliable fallback.
 

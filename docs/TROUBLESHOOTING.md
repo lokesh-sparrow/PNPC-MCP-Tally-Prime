@@ -423,7 +423,9 @@ Select-String "Handling DXT/MCPB file" "$env:APPDATA\Claude\logs\main.log" | Sel
   off-screen (rare, multi-monitor/remote-desktop setups) — check other
   windows.
 - Not logged at all: use **Install Unpacked Extension** on the same
-  Extensions → Advanced settings screen instead. Download the "Source code
-  (zip)" from the
-  [latest release](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest),
-  extract it, and point the picker at that folder.
+  Extensions → Advanced settings screen instead. Download
+  `PNPC-MCP-Tally-Prime-unpacked-*.zip` from the
+  [latest release](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest)
+  (same already-built contents as the `.mcpb` — NOT GitHub's auto-generated
+  "Source code (zip)", which is raw unbuilt source and needs Node.js plus a
+  build step to work), extract it, and point the picker at that folder.
