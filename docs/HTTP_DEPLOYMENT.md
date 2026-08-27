@@ -54,6 +54,12 @@ startup in that case. Do not expose an unauthenticated instance beyond
   stateless HTTP mode it persists across requests as long as the process
   keeps running, but is lost on restart, same as stdio mode.
 
+## Connecting from claude.ai, ChatGPT, or Grok
+
+Those clients require OAuth on top of the bearer token above — see
+[docs/OAUTH_CONNECTORS.md](./OAUTH_CONNECTORS.md) for the login flow this
+server also supports, and set `PUBLIC_URL` (below) to enable it.
+
 ## Environment variables
 
 | Variable | Default | Purpose |
@@ -61,3 +67,4 @@ startup in that case. Do not expose an unauthenticated instance beyond
 | `TALLY_URL` | `http://localhost:9000` | Tally's HTTP gateway address |
 | `PORT` | `3939` | Port for the HTTP server |
 | `TALLY_MCP_TOKEN` | _(unset)_ | Bearer token required on `/mcp` if set |
+| `PUBLIC_URL` | `http://localhost:<PORT>` | This server's externally-reachable HTTPS address — required for the OAuth endpoints in [docs/OAUTH_CONNECTORS.md](./OAUTH_CONNECTORS.md) to advertise correct URLs |

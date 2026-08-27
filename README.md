@@ -42,10 +42,19 @@ Get the latest release — no cloning or building required:
 | Platform | Local | Remote |
 |---|---|---|
 | Claude Desktop | ✔️ | ✔️ |
+| Claude web (claude.ai) | — | ✔️ |
+| ChatGPT (Developer Mode) | — | ✔️ |
+| Grok | — | ✔️ |
 
 (Remote/cloud deployment is possible via the HTTP entry point — see
-[docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) — but local is the
-supported, recommended path for most users.)
+[docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) and
+[docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) — but local is the
+supported, recommended path for most users. Claude Desktop is the only
+client here with a local/no-network install option (the `.mcpb`
+extension); claude.ai, ChatGPT, and Grok all connect only to remote HTTPS
+MCP endpoints — none of them can run a local stdio server on your PC the
+way Claude Desktop does, so remote deployment is the only path into any
+of them.)
 
 ## Setup (Local)
 
@@ -389,6 +398,8 @@ manifest.json     Claude Desktop Extension manifest (manifest_version 0.3)
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — full FAQ + every real-world gotcha, by category
 - [docs/SQL_CACHE.md](docs/SQL_CACHE.md) — the PGLite SQL cache, schema, examples
 - [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) — running as a remote HTTP server
+- [docs/CLOUDFLARE_TUNNEL.md](docs/CLOUDFLARE_TUNNEL.md) — exposing that server without opening a router port
+- [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) — connecting from claude.ai, ChatGPT, or Grok
 - [docs/EXTENSION_PACKAGING.md](docs/EXTENSION_PACKAGING.md) — packaging as a Claude Desktop Extension
 
 ## Roadmap / not yet supported
