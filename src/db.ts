@@ -40,7 +40,8 @@ async function ensureSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS ledgers (
         name TEXT PRIMARY KEY,
         parent TEXT,
-        closing_balance NUMERIC
+        closing_balance NUMERIC,
+        trn TEXT
       );
       CREATE TABLE IF NOT EXISTS groups (
         name TEXT PRIMARY KEY,
@@ -156,7 +157,12 @@ export async function syncAll(): Promise<string> {
   await ensureSchema();
 
   const [ledgers, groups, stockItems] = await Promise.all([
-    fetchCollection("Ledger", [{ name: "NAME" }, { name: "PARENT" }, { name: "CLOSINGBALANCE", datatype: "amount" }]),
+    fetchCollection("Ledger", [
+      { name: "NAME" },
+      { name: "PARENT" },
+      { name: "CLOSINGBALANCE", datatype: "amount" },
+      { name: "VATTINNUMBER" },
+    ]),
     fetchCollection("Group", [{ name: "NAME" }, { name: "PARENT" }]),
     fetchCollection("Stock Item", [{ name: "NAME" }, { name: "PARENT" }, { name: "CLOSINGBALANCE", datatype: "quantity" }]),
   ]);
@@ -165,10 +171,11 @@ export async function syncAll(): Promise<string> {
   try {
     await db.exec("DELETE FROM ledgers");
     for (const l of ledgers) {
-      await db.query("INSERT INTO ledgers (name, parent, closing_balance) VALUES ($1, $2, $3)", [
+      await db.query("INSERT INTO ledgers (name, parent, closing_balance, trn) VALUES ($1, $2, $3, $4)", [
         str(l.NAME),
         str(l.PARENT),
         num(l.CLOSINGBALANCE),
+        str(l.VATTINNUMBER),
       ]);
     }
 

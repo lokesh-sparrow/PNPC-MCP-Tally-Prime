@@ -215,6 +215,17 @@ after every referencing voucher is gone. This is not a real permanent lock —
 running **Company Data → Rewrite** inside Tally itself clears it. Retrying
 the delete call does not help; only the Rewrite does.
 
+A second, distinct cause (confirmed live, and not fixed by Rewrite): a
+create/update voucher call that reports `EXCEPTIONS` with `created: 0` — a
+rejected write — can still leave a stray voucher behind in Tally under
+**Exception Reports**, invisible to `get_vouchers`, `get_ledger_vouchers`,
+and this connector's own `verify` read-backs, all of which deliberately
+filter out cancelled/exception entries. That stray voucher still holds a
+delete-lock on any ledger/stock item it referenced. If Rewrite doesn't clear
+the lock, check Tally's **Exception Reports** (not the Day Book) for a
+leftover voucher referencing the master you're trying to delete, and delete
+it there first.
+
 ### Deleting a voucher and a master it referenced, in the same batch
 Deleting a voucher and then immediately deleting a master
 that voucher referenced, in the same parallel batch, can race — the master

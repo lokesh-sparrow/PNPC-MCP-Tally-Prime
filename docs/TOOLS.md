@@ -6,7 +6,7 @@ All dates are `DD-MM-YYYY` unless stated otherwise.
 
 | Tool | Args | Returns |
 |---|---|---|
-| `get_ledgers` | `query?` | All ledgers (name, parent group, closing balance), or — with `query` — a fuzzy-ranked shortlist of the closest-matching names (exact/prefix/substring, then a loose in-order character match for typos/abbreviations), capped to the top 20, best match first |
+| `get_ledgers` | `query?` | All ledgers (name, parent group, closing balance, VAT TRN), or — with `query` — a fuzzy-ranked shortlist of the closest-matching names (exact/prefix/substring, then a loose in-order character match for typos/abbreviations), capped to the top 20, best match first |
 | `get_stock_items` | — | All stock items: name, parent group, closing balance |
 | `get_groups` | — | All account groups: name, parent |
 | `get_voucher_types` | — | All configured voucher types: name, parent |
@@ -36,6 +36,17 @@ All dates are `DD-MM-YYYY` unless stated otherwise.
 | `preview_write` | `toolName`, `args` | Builds the exact XML any write tool (`create_*`/`update_*`/`delete_*`/`set_bill_of_materials`) would send, without sending it — nothing touches Tally. Reuses that tool's own arg parsing and pre-checks (e.g. `assertVoucherUnambiguous` for `update_*`/`delete_voucher`), so the preview already reflects any refusal. Returns `{previewId, toolName, description, xml}` and stores the entry in-memory for 15 minutes. In `READ_ONLY_TOOLS` — a `create_*` preview makes no gateway call at all, and an `update_*`/`delete_*` preview only makes the same read-only collision-check query that tool would normally make, so it works even when writes are blocked. |
 
 ## Write tools
+
+Every `create_*`/`update_*`/`delete_*` tool below re-reads what it just wrote
+straight back from Tally and appends the result as a `Verified in Tally: ...`
+line — not just whether Tally accepted the request, but the actual field
+values (or, for a delete, confirmation the record is really gone) as Tally
+now has them. Ledger/stock item/master writes are checked field-for-field
+against what was sent; voucher writes are checked ledger-leg-by-leg
+(amount, cost centre, bill reference) and item-line-by-item-line (qty, rate,
+amount). A `create_*` call with no `voucherNumber` (Tally auto-numbers it)
+skips voucher verification and says so — there's no reliable key to look the
+voucher back up by without one.
 
 | Tool | Args | Effect |
 |---|---|---|

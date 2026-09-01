@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL } from "./tally.js";
+import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL, CollectionField } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
 import { syncAll, syncVouchers, syncVoucherItems, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary } from "./db.js";
@@ -16,7 +16,8 @@ export const tools = [
       "ledger, without pulling and scanning the entire ledger list yourself. Matches on exact/prefix/substring, " +
       "then falls back to a loose in-order character match for abbreviations and typos (e.g. 'vro' finds 'VRO " +
       "Technology'). Returns at most the top 20 matches, ranked best first; an empty result means create the " +
-      "ledger — nothing close enough exists yet.",
+      "ledger — nothing close enough exists yet. Each ledger includes VATTINNUMBER (the UAE VAT TRN set via " +
+      "create_ledger's trn field, blank if never set).",
     inputSchema: {
       type: "object",
       properties: {
@@ -3841,7 +3842,165 @@ async function assertVoucherUnambiguous(voucherType: string, voucherNumber: stri
   }
 }
 
-function checkImportResult(result: unknown): string {
+// Verification helpers ------------------------------------------------------
+// checkImportResult (below) only proves Tally *accepted* the write — it
+// never proves the fields actually landed the way they were sent (e.g. a
+// field silently ignored by a TDL quirk). These re-query the object right
+// after a successful write, by its natural key, and hand back the basic
+// fields as Tally now has them — the same "read your own write" check a
+// human would do by reopening the voucher/ledger in Tally's UI.
+
+// Every field these read back is one create_ledger actually sends (see
+// create-ledger.xml.njk) — the point is a 1:1 comparison against what was
+// written, not just a spot-check of name/balance.
+async function verifyLedgerWrite(name: string): Promise<string | null> {
+  const xml = buildCollectionXml(
+    "Ledger",
+    [
+      { name: "NAME" },
+      { name: "PARENT" },
+      { name: "OPENINGBALANCE", datatype: "amount" },
+      { name: "CLOSINGBALANCE", datatype: "amount" },
+      { name: "ISBILLWISEON", datatype: "boolean" },
+      { name: "VATTINNUMBER" },
+      { name: "EMAIL" },
+      { name: "WEBSITE" },
+      { name: "LEDGERPHONE" },
+      { name: "LEDGERMOBILE" },
+      { name: "BILLCREDITPERIOD", datatype: "number" },
+      { name: "CREDITLIMIT", datatype: "amount" },
+      { name: "MAILINGNAME" },
+      { name: "ADDRESS", expression: 'if $$IsEmpty:$Address then "" else $$FullList:Address:$Address' },
+      { name: "STATE", expression: "$LedStateName" },
+      { name: "COUNTRY", expression: "$CountryName" },
+      { name: "PINCODE" },
+    ],
+    [{ name: "FilterName", expression: `$$IsEqual:$Name:"${name}"` }]
+  );
+  const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+  if (rows.length === 0) return `not found in Tally under "${name}" after the write — re-check the name.`;
+  return JSON.stringify(rows[0]);
+}
+
+async function verifyMasterWrite(collectionType: string, name: string, extraFields: CollectionField[] = []): Promise<string | null> {
+  const xml = buildCollectionXml(
+    collectionType,
+    [{ name: "NAME" }, { name: "PARENT" }, ...extraFields],
+    [{ name: "FilterName", expression: `$$IsEqual:$Name:"${name}"` }]
+  );
+  const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+  if (rows.length === 0) return `not found in Tally under "${name}" after the write — re-check the name.`;
+  return JSON.stringify(rows[0]);
+}
+
+// Every field create_stock_item/update_stock_item send (see
+// create-stock-item.xml.njk) — same 1:1 comparison intent as the ledger verify.
+async function verifyStockItemWrite(name: string): Promise<string | null> {
+  const xml = buildCollectionXml(
+    "Stock Item",
+    [
+      { name: "NAME" },
+      { name: "PARENT" },
+      { name: "BASEUNITS" },
+      { name: "OPENINGBALANCE", datatype: "quantity" },
+      { name: "OPENINGRATE", datatype: "rate" },
+      { name: "CLOSINGBALANCE", datatype: "quantity" },
+      { name: "DESCRIPTION" },
+      { name: "RATEOFVAT", datatype: "rate" },
+      { name: "IGNORENEGATIVESTOCK" },
+    ],
+    [{ name: "FilterName", expression: `$$IsEqual:$Name:"${name}"` }]
+  );
+  const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+  if (rows.length === 0) return `not found in Tally under "${name}" after the write — re-check the name.`;
+  return JSON.stringify(rows[0]);
+}
+
+// delete_master takes Tally's XML tag name for the master type (e.g.
+// "STOCKITEM", "VOUCHERTYPE") but a COLLECTION query needs the human-readable
+// Type name ("Stock Item", "Voucher Type") — these are not the same string.
+const MASTER_COLLECTION_TYPES: Record<string, string> = {
+  LEDGER: "Ledger",
+  GROUP: "Group",
+  STOCKITEM: "Stock Item",
+  STOCKGROUP: "Stock Group",
+  VOUCHERTYPE: "Voucher Type",
+  UNIT: "Unit",
+  GODOWN: "Godown",
+  COSTCATEGORY: "Cost Category",
+  COSTCENTRE: "Cost Centre",
+};
+function masterCollectionType(tag: string): string {
+  return MASTER_COLLECTION_TYPES[tag.toUpperCase().replace(/\s+/g, "")] ?? tag;
+}
+
+async function verifyAbsence(collectionType: string, name: string): Promise<string | null> {
+  const xml = buildCollectionXml(
+    collectionType,
+    [{ name: "NAME" }],
+    [{ name: "FilterName", expression: `$$IsEqual:$Name:"${name}"` }]
+  );
+  const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+  return rows.length === 0 ? `confirmed removed — "${name}" no longer exists.` : `still present — delete may not have taken effect.`;
+}
+
+// voucherNumber is optional on most create_* calls (Tally auto-numbers when
+// omitted) — without it there's no reliable key to look the voucher back up
+// by, so verification is skipped rather than guessing at the most recent
+// voucher of that type/date.
+// Reads back a voucher's full recorded shape after a write: every ledger leg
+// (with amount, cost centre, bill allocation) and every inventory line
+// (with qty/rate/amount/godown/batch) — not just the party+total summary —
+// so a create/update can be compared field-for-field against what was sent,
+// the same way create_ledger's TRN gets compared after the write.
+async function verifyVoucherWrite(voucherType: string, voucherNumber: string | undefined, date: string): Promise<string | null> {
+  if (!voucherNumber) {
+    return `skipped — no voucherNumber was given, so Tally auto-numbered it and there's no reliable key to look it back up by. Pass voucherNumber next time to verify, or check with get_ledger_vouchers/get_vouchers.`;
+  }
+  const tallyDate = toTallyActionDate(date);
+  const [headerResult, ledgerEntryResult, itemResult] = await Promise.all([
+    tallyRequest(render("vouchers-in-range.xml.njk", { fromDate: tallyDate, toDate: tallyDate })),
+    tallyRequest(render("voucher-ledger-entries.xml.njk", { fromDate: tallyDate, toDate: tallyDate })),
+    tallyRequest(render("sync-voucher-items.xml.njk", { fromDate: tallyDate, toDate: tallyDate })),
+  ]);
+  const headerRows = extractRecords(headerResult) as Record<string, unknown>[];
+  const ledgerEntryRows = extractRecords(ledgerEntryResult) as Record<string, unknown>[];
+  const itemRows = extractRecords(itemResult) as Record<string, unknown>[];
+
+  // Tally's XML gateway uppercases these tag names on output regardless of
+  // how the template declares them (confirmed live — same reason db.ts reads
+  // v.VOUCHER_TYPE, not v.voucher_type, from this same style of template).
+  const matches = (rows: Record<string, unknown>[]) =>
+    rows.filter(
+      (r) => String(r.VOUCHER_NUMBER ?? "").trim() === String(voucherNumber).trim() && String(r.VOUCHER_TYPE ?? "") === voucherType
+    );
+
+  const header = matches(headerRows)[0];
+  if (!header) {
+    return `not found in Tally as ${voucherType} #${voucherNumber} on ${date} after the write — Tally may have numbered it differently than requested.`;
+  }
+  const ledgerEntry = matches(ledgerEntryRows).find((r) => r.VOUCHER_GUID === header.GUID);
+  const itemEntry = matches(itemRows).find((r) => r.VOUCHER_GUID === header.GUID);
+
+  return JSON.stringify({
+    ...header,
+    ledgerEntries: (ledgerEntry as any)?.ENTRY ?? [],
+    inventoryEntries: (itemEntry as any)?.ITEM ?? [],
+  });
+}
+
+async function verifyVoucherAbsent(voucherType: string, voucherNumber: string, date: string): Promise<string | null> {
+  const xml = vouchersByDateXml(date);
+  const rows = extractRecords(await tallyRequest(xml)) as { VOUCHER_TYPE?: string; VOUCHER_NUMBER?: string | number }[];
+  const stillThere = rows.some(
+    (r) => String(r.VOUCHER_NUMBER ?? "").trim() === String(voucherNumber).trim() && r.VOUCHER_TYPE === voucherType
+  );
+  return stillThere
+    ? `still present — delete may not have taken effect.`
+    : `confirmed removed — ${voucherType} #${voucherNumber} on ${date} no longer exists.`;
+}
+
+async function checkImportResult(result: unknown, verify?: () => Promise<string | null>): Promise<string> {
   const cleaned = cleanTallyResult(result) as any;
   // Confirmed live: a real Import Data response from this Tally instance
   // comes back as a bare {RESPONSE: {...}} object with no ENVELOPE wrapper
@@ -3866,14 +4025,26 @@ function checkImportResult(result: unknown): string {
       ` Raw response: ${JSON.stringify(cleaned)}`
     );
   }
+
+  let verifiedLine = "";
+  if (verify) {
+    try {
+      const verified = await verify();
+      if (verified) verifiedLine = `\nVerified in Tally: ${verified}`;
+    } catch (e) {
+      verifiedLine = `\nVerification read-back failed: ${(e as Error).message}`;
+    }
+  }
+
   if (exceptions && Number(exceptions) > 0) {
     return (
       `Completed with ${exceptions} exception(s), created ${created ?? 0}.` +
       (lineError ? ` ${lineError}` : "") +
-      ` Raw response: ${JSON.stringify(cleaned)}`
+      ` Raw response: ${JSON.stringify(cleaned)}` +
+      verifiedLine
     );
   }
-  return `Success. Created: ${created ?? "unknown"}. Raw response: ${JSON.stringify(cleaned, null, 2)}`;
+  return `Success. Created: ${created ?? "unknown"}. Raw response: ${JSON.stringify(cleaned, null, 2)}${verifiedLine}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -4100,6 +4271,7 @@ export async function handleTool(
           expression: 'if $$IsEqual:$Parent:$$SysName:Primary then "Reserves & Surplus" else $Parent',
         },
         { name: "CLOSINGBALANCE", datatype: "amount" },
+        { name: "VATTINNUMBER" },
       ]);
       const result = await tallyRequest(xml);
       if (!query) {
@@ -4108,7 +4280,7 @@ export async function handleTool(
       // NAME is typed loosely (not just string) because a purely-numeric ledger
       // name comes back from Tally as a JS number after XML parsing — confirmed
       // live (see fuzzyScore).
-      const rows = extractRecords(result) as { NAME: string | number; PARENT: string; CLOSINGBALANCE: number }[];
+      const rows = extractRecords(result) as { NAME: string | number; PARENT: string; CLOSINGBALANCE: number; VATTINNUMBER?: string }[];
       const ranked = rows
         .map((row) => ({ row, score: fuzzyScore(query, row.NAME) }))
         .filter((r) => r.score > 0)
@@ -4598,14 +4770,16 @@ export async function handleTool(
         extraFields,
       });
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyLedgerWrite(ledgerName));
     }
 
     case "delete_master": {
       const { collection, names } = args as { collection: string; names: string[] };
       const xml = deleteMasterXml(collection.toUpperCase(), names);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      const collectionType = masterCollectionType(collection);
+      const results = await Promise.all(names.map((n) => verifyAbsence(collectionType, n)));
+      return checkImportResult(result, async () => results.map((r, i) => `${names[i]}: ${r}`).join("; "));
     }
 
     case "set_company": {
@@ -4668,14 +4842,14 @@ export async function handleTool(
       };
       const xml = createVoucherXml(voucherArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite(voucherArgs.voucherType, undefined, voucherArgs.date));
     }
 
     case "create_sales_invoice": {
       const invoiceArgs = args as Parameters<typeof createSalesInvoiceXml>[0];
       const xml = createSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "update_sales_invoice": {
@@ -4683,14 +4857,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Sales", invoiceArgs.voucherNumber, invoiceArgs.date);
       const xml = updateSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "create_purchase_invoice": {
       const invoiceArgs = args as Parameters<typeof createPurchaseInvoiceXml>[0];
       const xml = createPurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "update_purchase_invoice": {
@@ -4698,14 +4872,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date);
       const xml = updatePurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "create_credit_note": {
       const noteArgs = args as Parameters<typeof createCreditNoteXml>[0];
       const xml = createCreditNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Credit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "update_credit_note": {
@@ -4713,14 +4887,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Credit Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = updateCreditNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Credit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_debit_note": {
       const noteArgs = args as Parameters<typeof createDebitNoteXml>[0];
       const xml = createDebitNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Debit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "update_debit_note": {
@@ -4728,14 +4902,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Debit Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = updateDebitNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Debit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_delivery_note": {
       const noteArgs = args as Parameters<typeof createDeliveryNoteXml>[0];
       const xml = createDeliveryNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Delivery Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "update_delivery_note": {
@@ -4743,14 +4917,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Delivery Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = updateDeliveryNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Delivery Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_receipt_note": {
       const noteArgs = args as Parameters<typeof createReceiptNoteXml>[0];
       const xml = createReceiptNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Receipt Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "update_receipt_note": {
@@ -4758,14 +4932,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Receipt Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = updateReceiptNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Receipt Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_sales_order": {
       const orderArgs = args as Parameters<typeof createSalesOrderXml>[0];
       const xml = createSalesOrderXml(orderArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Sales Order", orderArgs.voucherNumber, orderArgs.date));
     }
 
     case "update_sales_order": {
@@ -4773,14 +4947,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Sales Order", orderArgs.voucherNumber, orderArgs.date);
       const xml = updateSalesOrderXml(orderArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Sales Order", orderArgs.voucherNumber, orderArgs.date));
     }
 
     case "create_purchase_order": {
       const orderArgs = args as Parameters<typeof createPurchaseOrderXml>[0];
       const xml = createPurchaseOrderXml(orderArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Purchase Order", orderArgs.voucherNumber, orderArgs.date));
     }
 
     case "update_purchase_order": {
@@ -4788,14 +4962,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Purchase Order", orderArgs.voucherNumber, orderArgs.date);
       const xml = updatePurchaseOrderXml(orderArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Purchase Order", orderArgs.voucherNumber, orderArgs.date));
     }
 
     case "create_job_work_in_order": {
       const jwArgs = args as Parameters<typeof createJobWorkInOrderXml>[0];
       const xml = createJobWorkInOrderXml(jwArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Job Work In Order", jwArgs.voucherNumber, jwArgs.date));
     }
 
     case "update_job_work_in_order": {
@@ -4803,14 +4977,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Job Work In Order", jwArgs.voucherNumber, jwArgs.date);
       const xml = updateJobWorkInOrderXml(jwArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Job Work In Order", jwArgs.voucherNumber, jwArgs.date));
     }
 
     case "create_job_work_out_order": {
       const jwArgs = args as Parameters<typeof createJobWorkOutOrderXml>[0];
       const xml = createJobWorkOutOrderXml(jwArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date));
     }
 
     case "update_job_work_out_order": {
@@ -4818,14 +4992,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date);
       const xml = updateJobWorkOutOrderXml(jwArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date));
     }
 
     case "create_sales_quotation": {
       const quoteArgs = args as Parameters<typeof createSalesQuotationXml>[0];
       const xml = createSalesQuotationXml(quoteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date));
     }
 
     case "update_sales_quotation": {
@@ -4833,14 +5007,16 @@ export async function handleTool(
       await assertVoucherUnambiguous("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date);
       const xml = updateSalesQuotationXml(quoteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date));
     }
 
     case "create_stock_journal": {
       const stockJournalArgs = args as Parameters<typeof createStockJournalXml>[0];
       const xml = createStockJournalXml(stockJournalArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyVoucherWrite(stockJournalArgs.voucherType ?? "Stock Journal", stockJournalArgs.voucherNumber, stockJournalArgs.date)
+      );
     }
 
     case "update_stock_journal": {
@@ -4852,14 +5028,16 @@ export async function handleTool(
       );
       const xml = updateStockJournalXml(stockJournalArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyVoucherWrite(stockJournalArgs.voucherType ?? "Stock Journal", stockJournalArgs.voucherNumber, stockJournalArgs.date)
+      );
     }
 
     case "create_material_in": {
       const materialArgs = args as Parameters<typeof createMaterialInXml>[0];
       const xml = createMaterialInXml(materialArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Material In", materialArgs.voucherNumber, materialArgs.date));
     }
 
     case "update_material_in": {
@@ -4867,14 +5045,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Material In", materialArgs.voucherNumber, materialArgs.date);
       const xml = updateMaterialInXml(materialArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Material In", materialArgs.voucherNumber, materialArgs.date));
     }
 
     case "create_material_out": {
       const materialArgs = args as Parameters<typeof createMaterialOutXml>[0];
       const xml = createMaterialOutXml(materialArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Material Out", materialArgs.voucherNumber, materialArgs.date));
     }
 
     case "update_material_out": {
@@ -4882,14 +5060,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Material Out", materialArgs.voucherNumber, materialArgs.date);
       const xml = updateMaterialOutXml(materialArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Material Out", materialArgs.voucherNumber, materialArgs.date));
     }
 
     case "create_rejections_in": {
       const rejArgs = args as Parameters<typeof createRejectionsInXml>[0];
       const xml = createRejectionsInXml(rejArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Rejections In", rejArgs.voucherNumber, rejArgs.date));
     }
 
     case "update_rejections_in": {
@@ -4897,14 +5075,14 @@ export async function handleTool(
       await assertVoucherUnambiguous("Rejections In", rejArgs.voucherNumber, rejArgs.date);
       const xml = updateRejectionsInXml(rejArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Rejections In", rejArgs.voucherNumber, rejArgs.date));
     }
 
     case "create_rejections_out": {
       const rejArgs = args as Parameters<typeof createRejectionsOutXml>[0];
       const xml = createRejectionsOutXml(rejArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Rejections Out", rejArgs.voucherNumber, rejArgs.date));
     }
 
     case "update_rejections_out": {
@@ -4912,14 +5090,16 @@ export async function handleTool(
       await assertVoucherUnambiguous("Rejections Out", rejArgs.voucherNumber, rejArgs.date);
       const xml = updateRejectionsOutXml(rejArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherWrite("Rejections Out", rejArgs.voucherNumber, rejArgs.date));
     }
 
     case "create_physical_stock": {
       const physicalStockArgs = args as Parameters<typeof createPhysicalStockXml>[0];
       const xml = createPhysicalStockXml(physicalStockArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyVoucherWrite("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date)
+      );
     }
 
     case "update_physical_stock": {
@@ -4927,56 +5107,79 @@ export async function handleTool(
       await assertVoucherUnambiguous("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date);
       const xml = updatePhysicalStockXml(physicalStockArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyVoucherWrite("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date)
+      );
     }
 
     case "create_group": {
       const { name: groupName, oldName, parent } = args as { name: string; oldName?: string; parent: string };
       const xml = createGroupXml(groupName, parent, oldName);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyMasterWrite("Group", groupName));
     }
 
     case "create_stock_group": {
       const { name: stockGroupName, parent } = args as { name: string; parent: string };
       const xml = createStockGroupXml(stockGroupName, parent);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyMasterWrite("Stock Group", stockGroupName));
     }
 
     case "create_unit": {
       const unitArgs = args as Parameters<typeof createUnitXml>[0];
       const xml = createUnitXml(unitArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyMasterWrite("Unit", unitArgs.symbol, [
+          { name: "ISSIMPLEUNIT" },
+          { name: "SYMBOL" },
+          { name: "FORMALNAME" },
+          { name: "DECIMALPLACES", datatype: "number" },
+          { name: "ADDITIONALUNITS" },
+          { name: "CONVERSION", datatype: "number" },
+        ])
+      );
     }
 
     case "create_godown": {
       const { name: godownName, parent } = args as { name: string; parent?: string };
       const xml = createGodownXml(godownName, parent);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyMasterWrite("Godown", godownName));
     }
 
     case "create_cost_category": {
       const costCategoryArgs = args as Parameters<typeof createCostCategoryXml>[0];
       const xml = createCostCategoryXml(costCategoryArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyMasterWrite("Cost Category", costCategoryArgs.name, [
+          { name: "ALLOCATESTOREVENUE", datatype: "boolean" },
+          { name: "ALLOCATESTONONREVENUE", datatype: "boolean" },
+        ])
+      );
     }
 
     case "create_cost_centre": {
       const costCentreArgs = args as Parameters<typeof createCostCentreXml>[0];
       const xml = createCostCentreXml(costCentreArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyMasterWrite("Cost Centre", costCentreArgs.name, [{ name: "CATEGORY" }]));
     }
 
     case "create_voucher_type": {
       const voucherTypeArgs = args as Parameters<typeof createVoucherTypeXml>[0];
       const xml = createVoucherTypeXml(voucherTypeArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyMasterWrite("Voucher Type", voucherTypeArgs.name, [
+          { name: "NUMBERINGMETHOD" },
+          { name: "VCHTYPEABBREV" },
+          { name: "PREVENTDUPLICATES", datatype: "boolean" },
+          { name: "ASMFGJRNL", datatype: "boolean" },
+        ])
+      );
     }
 
     case "create_stock_item": {
@@ -5013,7 +5216,7 @@ export async function handleTool(
         extraFields,
       });
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyStockItemWrite(itemName));
     }
 
     case "update_stock_item": {
@@ -5028,21 +5231,21 @@ export async function handleTool(
       };
       const xml = updateStockItemXml(updateItemArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyStockItemWrite(updateItemArgs.name));
     }
 
     case "delete_stock_item": {
       const { name: itemName } = args as { name: string };
       const xml = deleteStockItemXml(itemName);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyAbsence("Stock Item", itemName));
     }
 
     case "set_bill_of_materials": {
       const bomArgs = args as Parameters<typeof setBillOfMaterialsXml>[0];
       const xml = setBillOfMaterialsXml(bomArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyStockItemWrite(bomArgs.stockItem));
     }
 
     case "update_voucher": {
@@ -5062,7 +5265,9 @@ export async function handleTool(
       await assertVoucherUnambiguous(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date);
       const xml = updateVoucherXml(voucherArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () =>
+        verifyVoucherWrite(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date)
+      );
     }
 
     case "delete_voucher": {
@@ -5074,7 +5279,7 @@ export async function handleTool(
       await assertVoucherUnambiguous(voucherType, voucherNumber, date);
       const xml = deleteVoucherXml(voucherType, voucherNumber, date);
       const result = await tallyRequest(xml);
-      return checkImportResult(result);
+      return checkImportResult(result, () => verifyVoucherAbsent(voucherType, voucherNumber, date));
     }
 
     case "preview_write": {
@@ -5100,7 +5305,7 @@ export async function handleTool(
       }
       pendingWrites.delete(previewId);
       const result = await tallyRequest(entry.xml);
-      return `Confirmed ${entry.toolName} — ${entry.description}\n${checkImportResult(result)}`;
+      return `Confirmed ${entry.toolName} — ${entry.description}\n${await checkImportResult(result)}`;
     }
 
     case "sync_to_sql": {

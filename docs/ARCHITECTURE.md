@@ -46,7 +46,14 @@ Claude Desktop (stdio)   or   remote MCP client (HTTP)
   voucher). This is where you add a new tool. Also holds `preview_write`/
   `confirm_write`'s state: an in-memory `previewId -> XML` map with a
   15-minute TTL, same session-only lifetime as `db.ts`'s SQL cache below
-  — gone on restart.
+  — gone on restart. Every create/update/delete tool also re-reads what it
+  just wrote (`verifyLedgerWrite`, `verifyStockItemWrite`, `verifyMasterWrite`,
+  `verifyVoucherWrite`, `verifyAbsence`/`verifyVoucherAbsent` for deletes) and
+  appends the result as a `Verified in Tally: ...` line via `checkImportResult`'s
+  optional `verify` callback — this proves the fields actually landed, not just
+  that Tally accepted the request. A create with no `voucherNumber` (Tally
+  auto-numbers it) skips voucher verification since there's no reliable key
+  to look it back up by.
 - **`templates.ts`** — loads and renders the Nunjucks templates in
   [`templates/`](../templates/) (auto-escaping on, so no manual XML
   escaping needed in `tools.ts`).

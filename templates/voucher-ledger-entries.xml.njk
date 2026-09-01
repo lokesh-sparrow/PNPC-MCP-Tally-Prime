@@ -1,0 +1,74 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>PNPCMCPVoucherLedgerEntries</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>{{ fromDate }}</SVFROMDATE>
+        <SVTODATE>{{ toDate }}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="PNPCMCPVoucherLedgerEntries">
+            <FORMS>PNPCMCPVoucherLedgerEntriesForm</FORMS>
+          </REPORT>
+          <FORM NAME="PNPCMCPVoucherLedgerEntriesForm">
+            <PARTS>PNPCMCPVoucherLedgerEntriesPart</PARTS>
+            <XMLTAG>DATA</XMLTAG>
+          </FORM>
+          <PART NAME="PNPCMCPVoucherLedgerEntriesPart">
+            <LINES>PNPCMCPVoucherLedgerEntriesLine</LINES>
+            <REPEAT>PNPCMCPVoucherLedgerEntriesLine : PNPCMCPVoucherLedgerEntriesCollection</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPVoucherLedgerEntriesLine">
+            <FIELDS>FldGuid,FldDate,FldType,FldNum</FIELDS>
+            <EXPLODE>PNPCMCPEntryPart</EXPLODE>
+            <XMLTAG>ROW</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldGuid"><SET>$Guid</SET><XMLTAG>voucher_guid</XMLTAG></FIELD>
+          <FIELD NAME="FldDate"><SET>$Date</SET><XMLTAG>date</XMLTAG></FIELD>
+          <FIELD NAME="FldType"><SET>$VoucherTypeName</SET><XMLTAG>voucher_type</XMLTAG></FIELD>
+          <FIELD NAME="FldNum"><SET>$VoucherNumber</SET><XMLTAG>voucher_number</XMLTAG></FIELD>
+          <PART NAME="PNPCMCPEntryPart">
+            <LINES>PNPCMCPEntryLine</LINES>
+            <REPEAT>PNPCMCPEntryLine : AllLedgerEntries</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPEntryLine">
+            <FIELDS>FldLedgerName,FldAmount,FldIsDeemedPositive,FldCostCentre</FIELDS>
+            <EXPLODE>PNPCMCPBillPart</EXPLODE>
+            <XMLTAG>ENTRY</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldLedgerName"><SET>$LedgerName</SET><XMLTAG>ledger</XMLTAG></FIELD>
+          <FIELD NAME="FldAmount"><SET>$$StringFindAndReplace:(if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount):"(-)":"-"</SET><XMLTAG>amount</XMLTAG></FIELD>
+          <FIELD NAME="FldIsDeemedPositive"><SET>if $IsDeemedPositive then 1 else 0</SET><XMLTAG>is_deemed_positive</XMLTAG></FIELD>
+          <FIELD NAME="FldCostCentre"><SET>if $$IsEmpty:$CategoryAllocations[1].CostCentreAllocations[1].Name then "" else $CategoryAllocations[1].CostCentreAllocations[1].Name</SET><XMLTAG>cost_centre</XMLTAG></FIELD>
+          <PART NAME="PNPCMCPBillPart">
+            <LINES>PNPCMCPBillLine</LINES>
+            <REPEAT>PNPCMCPBillLine : BillAllocations</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPBillLine">
+            <FIELDS>FldBillName,FldBillType</FIELDS>
+            <XMLTAG>BILL</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldBillName"><SET>$Name</SET><XMLTAG>bill_name</XMLTAG></FIELD>
+          <FIELD NAME="FldBillType"><SET>$BillType</SET><XMLTAG>bill_type</XMLTAG></FIELD>
+          <COLLECTION NAME="PNPCMCPVoucherLedgerEntriesCollection">
+            <TYPE>Voucher</TYPE>
+            <FETCH>AllLedgerEntries</FETCH>
+            <FILTER>PNPCMCPFilterCancelled,PNPCMCPFilterOptional</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="PNPCMCPFilterCancelled">NOT $IsCancelled</SYSTEM>
+          <SYSTEM TYPE="Formulae" NAME="PNPCMCPFilterOptional">NOT $IsOptional</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>
