@@ -46,7 +46,7 @@ const READ_ONLY_TOOLS = new Set([
   "get_voucher_types", "get_cost_centres", "get_stock_summary", "get_bills_receivable",
   "get_bills_payable", "get_cash_flow", "get_funds_flow", "get_ratio_analysis", "get_sales_register",
   "get_purchase_register", "get_journal_register", "get_payment_register", "get_receipts_and_payments",
-  "get_reorder_status", "get_vat_liability_summary", "get_gst_liability_summary", "get_ledger_vouchers", "sync_to_sql", "sync_vouchers_to_sql", "query_sql",
+  "get_reorder_status", "get_vat_liability_summary", "get_gst_liability_summary", "get_ledger_vouchers", "sync_to_sql", "sync_vouchers_to_sql", "sync_voucher_items_to_sql", "query_sql",
   "set_company", "set_period", "get_audit_log", "get_health_check",
   // preview_write never sends a write to Tally (see its own description) —
   // treated as read-only so it still works when read-only mode is on.

@@ -2532,7 +2532,7 @@ export const tools = [
     name: "query_sql",
     description:
       "Run a read-only SQL SELECT query against this session's in-memory cache (gone when the session ends). " +
-      "Tables: ledgers(name, parent, closing_balance), groups(name, parent), stock_items(name, parent, " +
+      "Tables: ledgers(name, parent, closing_balance, trn), groups(name, parent), stock_items(name, parent, " +
       "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration), " +
       "voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, " +
       "is_deemed_positive, godown, batch) — all five populated only by explicitly calling " +

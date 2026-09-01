@@ -128,7 +128,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `get_ledgers` | `query?` | All ledgers, or (with `query`) a fuzzy-ranked shortlist of the closest-matching ledger names — top 20, best match first |
+| `get_ledgers` | `query?` | All ledgers (including VAT TRN), or (with `query`) a fuzzy-ranked shortlist of the closest-matching ledger names — top 20, best match first |
 | `get_stock_items` | — | All stock items |
 | `get_groups` | — | Account groups (e.g. Sundry Debtors, Fixed Assets) |
 | `get_voucher_types` | — | Configured voucher types (Payment, Sales, Journal, ...) |
@@ -155,6 +155,11 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `get_gst_liability_summary` | `from`, `to` | India GST liability for a period — same hybrid approach as VAT, for CGST/SGST/IGST input/output/payable/receivable/RCM ledgers |
 
 ### Write — vouchers
+
+Every write tool below reads back what it just wrote and reports the actual
+values Tally now has (or, for a delete, confirms it's really gone) — not
+just whether Tally accepted the request. See
+[docs/TOOLS.md](docs/TOOLS.md#write-tools) for details.
 
 | Tool | Input | Output |
 |---|---|---|
@@ -254,7 +259,7 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 | `sync_to_sql` | — | Pulls ledgers, groups, and stock items into a **session-only, in-memory** SQL cache |
 | `sync_vouchers_to_sql` | `from`, `to` | Pulls voucher headers (date, type, number, party, amount, narration — not line items) for one date range into the same cache. Call it once per chunk (e.g. per quarter) to build up full multi-year history within a session — each call only replaces vouchers in its own date range, so calling it for 2024 then 2025 gives you both |
 | `sync_voucher_items_to_sql` | `from`, `to` | Pulls voucher **inventory line items** (stock item, qty, rate, amount, godown, batch — one row per item per batch allocation) for one date range into the same cache. This is the raw data for movement analysis, godown-wise stock, and batch detail — there's no separate report tool for those, it's a `query_sql` SELECT over this table. `qty`/`amount` are unsigned as Tally stores them; use `is_deemed_positive` with `voucher_type` to work out inward vs outward |
-| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)`, `voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, is_deemed_positive, godown, batch)` |
+| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance, trn)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)`, `voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, is_deemed_positive, godown, batch)` |
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
 `get_trial_balance`, `get_vat_liability_summary`, and

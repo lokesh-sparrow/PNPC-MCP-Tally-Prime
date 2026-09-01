@@ -53,7 +53,7 @@ into context a second time.
 
 | Table | Columns | Populated by |
 |---|---|---|
-| `ledgers` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
+| `ledgers` | `name`, `parent`, `closing_balance`, `trn` | `sync_to_sql` (explicit) |
 | `groups` | `name`, `parent` | `sync_to_sql` (explicit) |
 | `stock_items` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
 | `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` | `sync_vouchers_to_sql` (explicit) |
