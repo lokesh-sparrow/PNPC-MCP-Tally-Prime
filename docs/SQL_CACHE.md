@@ -122,15 +122,16 @@ query_sql: SELECT SUM(debit_amount), SUM(credit_amount) FROM trial_balance
 
 - **In-memory and session-only — deliberately, not just as a limitation of
   the underlying engine.** The cache is lost whenever the server process
-  restarts, and it is **not company-aware**: no row records which Tally
-  company it came from. Since one server instance can be pointed at many
-  different client companies over time via `set_company`, persisting the
-  cache across restarts (or across a company switch within one session)
-  would risk silently mixing one client's numbers with another's. Re-sync
-  after switching companies, and before answering any report that needs
-  up-to-the-minute figures. The six automatic tables carry the same
-  caveat — re-call the report tool after switching companies before
-  querying it.
+  restarts, and no row records which Tally company it came from. Since one
+  server instance can be pointed at many different client companies over
+  time via `set_company`, persisting the cache across a company switch
+  would risk silently mixing one client's numbers with another's — so
+  `set_company` empties every one of these tables (the manually-synced ones
+  and the six automatic ones alike) the moment the active company changes,
+  rather than leaving that to be remembered. This means every table is
+  simply empty right after a switch — re-sync/re-fetch before querying, and
+  before answering any report that needs up-to-the-minute figures either
+  way.
 - **`vouchers` only carries header-level detail.** No stock item or ledger
   line breakdown is cached there — use `get_vouchers` / `get_ledger_vouchers`
   for that, or `sync_voucher_items_to_sql` for the inventory line items.

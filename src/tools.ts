@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL, CollectionField } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, syncVouchers, syncVoucherItems, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary } from "./db.js";
+import { syncAll, syncVouchers, syncVoucherItems, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary, clearCache } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
 
@@ -16,8 +16,15 @@ export const tools = [
       "ledger, without pulling and scanning the entire ledger list yourself. Matches on exact/prefix/substring, " +
       "then falls back to a loose in-order character match for abbreviations and typos (e.g. 'vro' finds 'VRO " +
       "Technology'). Returns at most the top 20 matches, ranked best first; an empty result means create the " +
-      "ledger — nothing close enough exists yet. Each ledger includes VATTINNUMBER (the UAE VAT TRN set via " +
-      "create_ledger's trn field, blank if never set).",
+      "ledger — nothing close enough exists yet. Each ledger includes VATTINNUMBER, STATE, and COUNTRY (the values " +
+      "set via create_ledger's trn/state/country fields, blank if never set) — check these before creating a " +
+      "Sales/Purchase invoice (or Credit/Debit Note, Delivery/Receipt Note) for that party: Tally itself defaults " +
+      "a new invoice's Buyer/Place-of-Supply details from the party ledger's own master data, so use these same " +
+      "values for buyerTrn/buyerState/buyerCountry rather than leaving them blank or guessing. Only ask the user " +
+      "to confirm instead of defaulting when the party has multiple registered delivery locations/addresses and " +
+      "it's genuinely unclear which one applies to this specific transaction (confirmed live: a real customer " +
+      "ledger can carry dozens of named addresses, and one invoice's Buyer address and Consignee/Ship-to address " +
+      "can legitimately differ from both the ledger's default and each other).",
     inputSchema: {
       type: "object",
       properties: {
@@ -38,7 +45,7 @@ export const tools = [
     name: "get_vouchers",
     description:
       "Get vouchers (Day Book) from TallyPrime filtered by date range. Returns a flat array of rows (guid, date, " +
-      "voucher_type, voucher_number, party_ledger, amount, narration) — headers only, no stock item or ledger " +
+      "voucher_type, voucher_number, reference, party_ledger, amount, narration) — headers only, no stock item or ledger " +
       "line detail (use get_ledger_vouchers or query_sql for that). Rebuilt on the same Voucher collection query " +
       "sync_vouchers_to_sql already uses: an earlier version called Tally's canned 'Day Book' report directly, " +
       "which was confirmed live to silently ignore the date range entirely (returning the same fixed set " +
@@ -472,7 +479,11 @@ export const tools = [
     description:
       "Create a new voucher (e.g. Payment, Receipt, Sales, Purchase, Journal) in TallyPrime. " +
       "Either pass debitLedger/creditLedger/amount for a simple 2-leg voucher, or pass 'entries' " +
-      "for a voucher with 3+ lines (e.g. one payment split across several expense ledgers).",
+      "for a voucher with 3+ lines (e.g. one payment split across several expense ledgers). " +
+      "Normally omit voucherNumber and let Tally auto-number — but if Tally's numbering series doesn't pick up " +
+      "correctly (confirmed live: a company on a 'PNPC/2026/...' series silently restarted from '1' instead of " +
+      "continuing it), pass voucherNumber explicitly to force the value you want; check get_vouchers for the " +
+      "correct next number first.",
     inputSchema: {
       type: "object",
       properties: {
@@ -481,6 +492,48 @@ export const tools = [
           description: "Voucher type, e.g. 'Payment', 'Receipt', 'Sales', 'Purchase', 'Journal'",
         },
         date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
+        voucherNumber: {
+          type: "string",
+          description:
+            "Explicit voucher number, overriding Tally's automatic numbering. Optional — omit to let Tally " +
+            "assign the next number in its series.",
+        },
+        reference: {
+          type: "string",
+          description:
+            "Free-text reference for this voucher, backed by Tally's voucher-level REFERENCE field (the same " +
+            "field the 'Order no.' UI field on Order-class vouchers uses) — e.g. a supplier's bill/invoice number " +
+            "like 'PI-061538' on a Payment or Journal settling that bill. Independent of voucherNumber and of any " +
+            "per-leg bill reference name (debitBillName/creditBillName/entries[].billName), which is Tally's " +
+            "separate bill-wise settlement mechanism, not this field.",
+        },
+        referenceDate: {
+          type: "string",
+          description: "Date for the reference above, in DD-MM-YYYY format (Tally's REFERENCEDATE field). Independent of the voucher's own date. Only meaningful if reference is also set.",
+        },
+        buyerTrn: {
+          type: "string",
+          description:
+            "The buyer's TRN as it should appear on THIS voucher, when voucherType is a Sales-side accounting " +
+            "document (e.g. a custom 'Tax Invoice' voucher type entered in Accounting Invoice mode — plain ledger " +
+            "entries, no stock items) — Tally's TRADERCONSVATTINNO/BASICBUYERSSALESTAXNO fields, reverse-engineered " +
+            "from a real such voucher. Only correct when the party ledger IS the buyer (Sales-class); for a " +
+            "Purchase-class voucher the buyer is your own company instead, which this generic field does not " +
+            "distinguish — use create_purchase_invoice's separate buyerTrn/supplierTrn for that case.",
+        },
+        buyerState: {
+          type: "string",
+          description: "The buyer's Emirate/state on this voucher's Party Details (voucher-level STATENAME) — same Sales-class caveat as buyerTrn.",
+        },
+        buyerCountry: {
+          type: "string",
+          description: "The buyer's country on this voucher's Party Details (voucher-level COUNTRYOFRESIDENCE) — same Sales-class caveat as buyerTrn.",
+        },
+        placeOfSupplyEmirate: {
+          type: "string",
+          description: "UAE VAT Place of Supply Emirate for this voucher (Tally's EMIRATEPOS field) — for a standard domestic supply this is normally your own company's Emirate (check get_company_info).",
+        },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country (Tally's PLACEOFSUPPLYCOUNTRY field), e.g. 'UAE'." },
         narration: { type: "string", description: "Narration / description for the voucher" },
         debitLedger: { type: "string", description: "Ledger name to debit (simple 2-leg mode; omit if using 'entries')" },
         creditLedger: { type: "string", description: "Ledger name to credit (simple 2-leg mode; omit if using 'entries')" },
@@ -534,9 +587,10 @@ export const tools = [
       "Create a Stock Journal voucher in TallyPrime, moving inventory from one or more source stock items to " +
       "one or more destination stock items (transfer, manufacturing-style conversion with multiple raw materials " +
       "consumed and/or multiple finished/by-products produced, etc). Inventory-only — no ledger entries. " +
-      "Required if the company has multi-godown tracking: pass godown on every source/destination line — " +
-      "omitting it fails silently (blank EXCEPTIONS:1, no error text) even though the schema marks it optional " +
-      "(confirmed live pattern across every inventory-line tool in this connector).",
+      "Every source/destination line's godown is auto-filled only when this company has exactly one godown; if it " +
+      "has more than one (e.g. Dubai/Sharjah/Ajman), godown is required on each line and the call fails naming the " +
+      "available godowns rather than guessing (previously an omitted godown was silently dropped — blank " +
+      "EXCEPTIONS:1, no error text — this is now caught explicitly instead of guessing wrong).",
     inputSchema: {
       type: "object",
       properties: {
@@ -552,7 +606,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity consumed" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is issued from. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
+              godown: { type: "string", description: "Godown this line is issued from. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -568,7 +622,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity produced" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is received into. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
+              godown: { type: "string", description: "Godown this line is received into. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -639,7 +693,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity consumed" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is issued from. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
+              godown: { type: "string", description: "Godown this line is issued from. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -655,7 +709,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity produced" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this line is received into. Required if the company has multi-godown tracking — omitting it fails silently otherwise." },
+              godown: { type: "string", description: "Godown this line is received into. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -719,7 +773,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity received" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is received into. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -763,7 +817,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity received" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is received into. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -797,7 +851,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity sent" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is issued from. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -838,7 +892,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity sent" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is issued from. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -855,8 +909,8 @@ export const tools = [
       "customer or a job worker returning defective components). Inventory movement only, same shape as a " +
       "Sales/Purchase item line but with no party ledger. EXTRAPOLATED: no confirmed real-world XML example was " +
       "available for this exact voucher type — built by analogy to Tally's other inventory-only voucher shapes " +
-      "(Physical Stock). Verify carefully after use, and expect to need godown on every item if the company has " +
-      "location tracking enabled. If creation fails with LINEERROR 'Voucher date is missing' even though the " +
+      "(Physical Stock). Verify carefully after use — godown is required on every item unless the company has " +
+      "exactly one godown, in which case it auto-fills. If creation fails with LINEERROR 'Voucher date is missing' even though the " +
       "date field is set correctly, the date is outside Tally's active period (Alt+F2) — call set_period to " +
       "cover it and retry (confirmed live).",
     inputSchema: {
@@ -874,7 +928,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity received" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is received into. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -914,7 +968,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity received" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is received into (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is received into. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -947,7 +1001,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity sent" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is issued from. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -987,7 +1041,7 @@ export const tools = [
               qty: { type: "number", description: "Quantity sent" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos'" },
-              godown: { type: "string", description: "Godown this is issued from (optional, but required if the company has location tracking enabled)" },
+              godown: { type: "string", description: "Godown this is issued from. Auto-fills only if this company has exactly one godown; required if it has more than one." },
               batchName: { type: "string", description: "Batch name (optional, defaults to 'Primary Batch')" },
             },
             required: ["stockItem", "qty", "rate", "unit"],
@@ -1021,7 +1075,7 @@ export const tools = [
               stockItem: { type: "string", description: "Exact name of the stock item counted" },
               actualQty: { type: "number", description: "Actual counted quantity" },
               unit: { type: "string" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Defaults to 'Primary Batch' if the item is batch-tracked." },
             },
             required: ["stockItem", "actualQty", "unit"],
@@ -1062,7 +1116,7 @@ export const tools = [
               stockItem: { type: "string", description: "Exact name of the stock item counted" },
               actualQty: { type: "number", description: "Actual counted quantity" },
               unit: { type: "string" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Defaults to 'Primary Batch' if the item is batch-tracked." },
             },
             required: ["stockItem", "actualQty", "unit"],
@@ -1130,6 +1184,40 @@ export const tools = [
             "explicitly. If a create call fails with no error text, check get_vouchers for the highest existing " +
             "number of this voucher type and retry with voucherNumber set to the next one.",
         },
+        reference: {
+          type: "string",
+          description: "Free-text reference for this invoice (Tally's voucher-level REFERENCE field), e.g. a purchase order or bill number the customer quoted.",
+        },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format. Independent of the invoice's own date." },
+        buyerTrn: {
+          type: "string",
+          description:
+            "The buyer's Tax Registration Number as it should appear on THIS invoice — a per-voucher snapshot " +
+            "(Tally's TRADERCONSVATTINNO/BASICBUYERSSALESTAXNO fields), separate from and not inherited from the " +
+            "party ledger's own trn (create_ledger). Reverse-engineered from a real Tax Invoice export: leaving " +
+            "this unset is exactly what leaves the invoice's Party Details showing a blank TRN even when the " +
+            "party ledger has one set — always pass this explicitly for a UAE VAT tax invoice.",
+        },
+        buyerState: {
+          type: "string",
+          description:
+            "The buyer's Emirate/state as it should appear on THIS invoice's Party Details (voucher-level " +
+            "STATENAME) — not inherited from the party ledger master. Match the company's existing convention " +
+            "(check get_company_info or an existing invoice).",
+        },
+        buyerCountry: {
+          type: "string",
+          description: "The buyer's country as it should appear on THIS invoice's Party Details (voucher-level COUNTRYOFRESIDENCE). Plain free text, e.g. 'UAE'.",
+        },
+        placeOfSupplyEmirate: {
+          type: "string",
+          description:
+            "UAE VAT Place of Supply Emirate for this invoice (Tally's EMIRATEPOS field) — for a standard domestic " +
+            "B2B supply of services this is normally the SUPPLIER's own Emirate (check get_company_info), not the " +
+            "buyer's. Required for a compliant UAE tax invoice; omitting it is what left this blank on a real " +
+            "invoice this was reverse-engineered from.",
+        },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country (Tally's PLACEOFSUPPLYCOUNTRY field), e.g. 'UAE'." },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1160,7 +1248,7 @@ export const tools = [
               rate: { type: "number" },
               unit: { type: "string" },
               salesLedger: { type: "string" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_sales_invoice); required if it has more than one." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1173,6 +1261,13 @@ export const tools = [
         vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
         billName: { type: "string" },
         billType: { type: "string" },
+        reference: { type: "string", description: "Free-text reference for this invoice (Tally's voucher-level REFERENCE field)." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        buyerTrn: { type: "string", description: "The buyer's TRN as it should appear on this invoice — same voucher-level snapshot field as create_sales_invoice's buyerTrn." },
+        buyerState: { type: "string", description: "The buyer's Emirate/state as it should appear on this invoice's Party Details." },
+        buyerCountry: { type: "string", description: "The buyer's country as it should appear on this invoice's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this invoice." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this invoice." },
       },
       required: ["voucherNumber", "date", "partyLedger", "items"],
     },
@@ -1234,6 +1329,39 @@ export const tools = [
             "explicitly. If a create call fails with no error text, check get_vouchers for the highest existing " +
             "number of this voucher type and retry with voucherNumber set to the next one.",
         },
+        reference: {
+          type: "string",
+          description: "Free-text reference for this invoice (Tally's voucher-level REFERENCE field) — typically the supplier's own bill/invoice number.",
+        },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format. Independent of the invoice's own date." },
+        supplierTrn: {
+          type: "string",
+          description:
+            "The supplier's (party's) TRN as it should appear on THIS invoice — Tally's TRADERCONSVATTINNO field. " +
+            "NOTE the asymmetry vs create_sales_invoice: on a purchase, the party is the supplier, not the buyer, " +
+            "so this is a distinct field from buyerTrn below (they held different real values in a reverse-engineered " +
+            "example — do not set them to the same value).",
+        },
+        buyerTrn: {
+          type: "string",
+          description:
+            "YOUR OWN company's TRN, as it should appear on this purchase invoice (Tally's BASICBUYERSSALESTAXNO " +
+            "field) — you are the buyer on a purchase. Check get_company_info or an existing purchase invoice for " +
+            "the correct value; this is normally constant across all purchase invoices for one company.",
+        },
+        buyerState: {
+          type: "string",
+          description: "YOUR OWN company's Emirate/state on this invoice's Party Details (voucher-level STATENAME) — you are the buyer on a purchase. Normally constant; check get_company_info.",
+        },
+        buyerCountry: {
+          type: "string",
+          description: "YOUR OWN company's country on this invoice's Party Details (voucher-level COUNTRYOFRESIDENCE). Normally constant; check get_company_info.",
+        },
+        placeOfSupplyEmirate: {
+          type: "string",
+          description: "UAE VAT Place of Supply Emirate for this invoice (Tally's EMIRATEPOS field).",
+        },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country (Tally's PLACEOFSUPPLYCOUNTRY field), e.g. 'UAE'." },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1264,7 +1392,7 @@ export const tools = [
               rate: { type: "number" },
               unit: { type: "string" },
               purchaseLedger: { type: "string" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_purchase_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_purchase_invoice); required if it has more than one." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1277,6 +1405,14 @@ export const tools = [
         vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
         billName: { type: "string" },
         billType: { type: "string" },
+        reference: { type: "string", description: "Free-text reference for this invoice (Tally's voucher-level REFERENCE field)." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        supplierTrn: { type: "string", description: "The supplier's (party's) TRN on this invoice — same voucher-level field as create_purchase_invoice's supplierTrn. Distinct from buyerTrn." },
+        buyerTrn: { type: "string", description: "YOUR OWN company's TRN on this invoice — same voucher-level field as create_purchase_invoice's buyerTrn." },
+        buyerState: { type: "string", description: "YOUR OWN company's Emirate/state on this invoice's Party Details." },
+        buyerCountry: { type: "string", description: "YOUR OWN company's country on this invoice's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this invoice." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this invoice." },
       },
       required: ["voucherNumber", "date", "partyLedger", "items"],
     },
@@ -1306,7 +1442,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
               salesLedger: { type: "string", description: "Sales/Sales Returns ledger this line is reversed against, e.g. the same ledger used on the original invoice" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_sales_invoice); required if it has more than one." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1327,6 +1463,13 @@ export const tools = [
             "blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this voucher type and retry " +
             "with voucherNumber set to the next one.",
         },
+        reference: { type: "string", description: "Free-text reference for this credit note (Tally's voucher-level REFERENCE field)." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        buyerTrn: { type: "string", description: "The buyer's (customer's) TRN as it should appear on this credit note (Tally's TRADERCONSVATTINNO/BASICBUYERSSALESTAXNO fields) — a per-voucher snapshot, not inherited from the party ledger master." },
+        buyerState: { type: "string", description: "The buyer's Emirate/state on this credit note's Party Details (voucher-level STATENAME)." },
+        buyerCountry: { type: "string", description: "The buyer's country on this credit note's Party Details (voucher-level COUNTRYOFRESIDENCE)." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this credit note (Tally's EMIRATEPOS field)." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country (Tally's PLACEOFSUPPLYCOUNTRY field)." },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1357,7 +1500,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
               salesLedger: { type: "string", description: "Sales/Sales Returns ledger this line is reversed against, e.g. the same ledger used on the original invoice" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_sales_invoice); required if it has more than one." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1370,6 +1513,13 @@ export const tools = [
         vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
         billName: { type: "string", description: "Bill reference to settle against, e.g. the original invoice's bill name. Defaults to 'Agst Ref' billType." },
         billType: { type: "string", description: "Defaults to 'Agst Ref' — settling against the original invoice's bill, unlike create_sales_invoice's 'New Ref' default." },
+        reference: { type: "string", description: "Free-text reference for this credit note." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        buyerTrn: { type: "string", description: "The buyer's TRN on this credit note — same voucher-level field as create_credit_note's buyerTrn." },
+        buyerState: { type: "string", description: "The buyer's Emirate/state on this credit note's Party Details." },
+        buyerCountry: { type: "string", description: "The buyer's country on this credit note's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this credit note." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this credit note." },
       },
       required: ["date", "voucherNumber", "partyLedger", "items"],
     },
@@ -1399,7 +1549,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
               purchaseLedger: { type: "string", description: "Purchase/Purchase Returns ledger this line is reversed against" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_purchase_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_purchase_invoice); required if it has more than one." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1420,6 +1570,14 @@ export const tools = [
             "blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this voucher type and retry " +
             "with voucherNumber set to the next one.",
         },
+        reference: { type: "string", description: "Free-text reference for this debit note (Tally's voucher-level REFERENCE field)." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        supplierTrn: { type: "string", description: "The supplier's (party's) TRN on this debit note (Tally's TRADERCONSVATTINNO field). Distinct from buyerTrn below — NOTE the asymmetry: on a purchase-side document the party is the supplier, not the buyer." },
+        buyerTrn: { type: "string", description: "YOUR OWN company's TRN on this debit note (Tally's BASICBUYERSSALESTAXNO field) — you are the buyer on a purchase-side document. Normally constant; check get_company_info." },
+        buyerState: { type: "string", description: "YOUR OWN company's Emirate/state on this debit note's Party Details." },
+        buyerCountry: { type: "string", description: "YOUR OWN company's country on this debit note's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this debit note." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this debit note." },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1450,7 +1608,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
               purchaseLedger: { type: "string", description: "Purchase/Purchase Returns ledger this line is reversed against" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_purchase_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_purchase_invoice); required if it has more than one." },
               batchName: { type: "string" },
               discountPercent: { type: "number" },
               vatLedger: { type: "string" },
@@ -1463,6 +1621,14 @@ export const tools = [
         vatRatePercent: { type: "number", description: "Default VAT rate. Required if vatLedger is set." },
         billName: { type: "string", description: "Bill reference to settle against, e.g. the original bill's name. Defaults to 'Agst Ref' billType." },
         billType: { type: "string", description: "Defaults to 'Agst Ref' — settling against the original purchase's bill, unlike create_purchase_invoice's 'New Ref' default." },
+        reference: { type: "string", description: "Free-text reference for this debit note." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        supplierTrn: { type: "string", description: "The supplier's (party's) TRN on this debit note. Distinct from buyerTrn — same asymmetry as create_debit_note." },
+        buyerTrn: { type: "string", description: "YOUR OWN company's TRN on this debit note." },
+        buyerState: { type: "string", description: "YOUR OWN company's Emirate/state on this debit note's Party Details." },
+        buyerCountry: { type: "string", description: "YOUR OWN company's country on this debit note's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this debit note." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this debit note." },
       },
       required: ["date", "voucherNumber", "partyLedger", "items"],
     },
@@ -1502,7 +1668,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to, e.g. 'Sales Accounts'" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking (same silent-fail behavior as create_sales_invoice)." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown (same as create_sales_invoice); required if it has more than one." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -1517,6 +1683,13 @@ export const tools = [
             "fails with a blank EXCEPTIONS:1, check get_vouchers for the highest existing number of this voucher " +
             "type and retry with voucherNumber set to the next one.",
         },
+        reference: { type: "string", description: "Free-text reference for this delivery note (Tally's voucher-level REFERENCE field), e.g. a dispatch or challan number." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        buyerTrn: { type: "string", description: "The buyer's TRN as it should appear on this delivery note's Party Details (voucher-level TRADERCONSVATTINNO/BASICBUYERSSALESTAXNO). Confirmed live: Delivery Note carries the same Buyer Details block as Sales/Credit Note." },
+        buyerState: { type: "string", description: "The buyer's Emirate/state on this delivery note's Party Details (voucher-level STATENAME)." },
+        buyerCountry: { type: "string", description: "The buyer's country on this delivery note's Party Details (voucher-level COUNTRYOFRESIDENCE)." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this delivery note (Tally's EMIRATEPOS field)." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country (Tally's PLACEOFSUPPLYCOUNTRY field)." },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1547,13 +1720,20 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to, e.g. 'Sales Accounts'" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
             required: ["stockItem", "qty", "rate", "unit", "salesLedger"],
           },
         },
+        reference: { type: "string", description: "Free-text reference for this delivery note." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        buyerTrn: { type: "string", description: "The buyer's TRN on this delivery note — same voucher-level field as create_delivery_note's buyerTrn." },
+        buyerState: { type: "string", description: "The buyer's Emirate/state on this delivery note's Party Details." },
+        buyerCountry: { type: "string", description: "The buyer's country on this delivery note's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this delivery note." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this delivery note." },
       },
       required: ["date", "voucherNumber", "partyLedger", "items"],
     },
@@ -1586,7 +1766,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to, e.g. 'Purchase Accounts'" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -1602,6 +1782,14 @@ export const tools = [
             "get_vouchers for the highest existing number of this voucher type and retry with voucherNumber set " +
             "to the next one.",
         },
+        reference: { type: "string", description: "Free-text reference for this receipt note (Tally's voucher-level REFERENCE field), e.g. the supplier's delivery/challan number." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        supplierTrn: { type: "string", description: "The supplier's (party's) TRN on this receipt note (Tally's TRADERCONSVATTINNO field). Distinct from buyerTrn below — on a purchase-side document the party is the supplier, not the buyer." },
+        buyerTrn: { type: "string", description: "YOUR OWN company's TRN on this receipt note (Tally's BASICBUYERSSALESTAXNO field) — you are the buyer on a purchase-side document. Normally constant; check get_company_info." },
+        buyerState: { type: "string", description: "YOUR OWN company's Emirate/state on this receipt note's Party Details." },
+        buyerCountry: { type: "string", description: "YOUR OWN company's country on this receipt note's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this receipt note." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this receipt note." },
       },
       required: ["date", "partyLedger", "items"],
     },
@@ -1629,13 +1817,21 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to, e.g. 'Purchase Accounts'" },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
             required: ["stockItem", "qty", "rate", "unit", "purchaseLedger"],
           },
         },
+        reference: { type: "string", description: "Free-text reference for this receipt note." },
+        referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+        supplierTrn: { type: "string", description: "The supplier's (party's) TRN on this receipt note. Distinct from buyerTrn — same asymmetry as create_receipt_note." },
+        buyerTrn: { type: "string", description: "YOUR OWN company's TRN on this receipt note." },
+        buyerState: { type: "string", description: "YOUR OWN company's Emirate/state on this receipt note's Party Details." },
+        buyerCountry: { type: "string", description: "YOUR OWN company's country on this receipt note's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this receipt note." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this receipt note." },
       },
       required: ["date", "voucherNumber", "partyLedger", "items"],
     },
@@ -1678,7 +1874,7 @@ export const tools = [
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
               dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED — confirmed live that Tally rejects an Order-class voucher with 'Due Date of Order is missing in Item Allocations' without one." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -1729,7 +1925,7 @@ export const tools = [
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
               dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -1769,7 +1965,7 @@ export const tools = [
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to" },
               dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED — confirmed live that Tally rejects an Order-class voucher with 'Due Date of Order is missing in Item Allocations' without one." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -1815,7 +2011,7 @@ export const tools = [
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               purchaseLedger: { type: "string", description: "Purchase ledger this line's amount is notionally posted to" },
               dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -1859,7 +2055,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit of the finished item" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED — same 'Due Date of Order' requirement as Sales Order/Purchase Order." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               components: {
                 type: "array",
@@ -1871,7 +2067,7 @@ export const tools = [
                     qty: { type: "number", description: "Quantity of raw material expected from the customer" },
                     rate: { type: "number", description: "Rate per unit of the raw material" },
                     unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
-                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    godown: { type: "string", description: "Godown for this component. Auto-fills only if this company has exactly one godown; required if it has more than one." },
                     batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
                   },
                   required: ["stockItem", "qty", "rate", "unit"],
@@ -1922,7 +2118,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit of the finished item" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               dueDate: { type: "string", description: "Expected delivery date for this line, DD-MM-YYYY. REQUIRED." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               components: {
                 type: "array",
@@ -1934,7 +2130,7 @@ export const tools = [
                     qty: { type: "number", description: "Quantity of raw material expected from the customer" },
                     rate: { type: "number", description: "Rate per unit of the raw material" },
                     unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
-                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    godown: { type: "string", description: "Godown for this component. Auto-fills only if this company has exactly one godown; required if it has more than one." },
                     batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
                   },
                   required: ["stockItem", "qty", "rate", "unit"],
@@ -1978,7 +2174,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit of the finished item" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               components: {
                 type: "array",
@@ -1990,7 +2186,7 @@ export const tools = [
                     qty: { type: "number", description: "Quantity of raw material to be sent out" },
                     rate: { type: "number", description: "Rate per unit of the raw material" },
                     unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
-                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    godown: { type: "string", description: "Godown for this component. Auto-fills only if this company has exactly one godown; required if it has more than one." },
                     batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
                   },
                   required: ["stockItem", "qty", "rate", "unit"],
@@ -2038,7 +2234,7 @@ export const tools = [
               rate: { type: "number", description: "Rate per unit of the finished item" },
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               dueDate: { type: "string", description: "Expected receipt date for this line, DD-MM-YYYY. REQUIRED." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               components: {
                 type: "array",
@@ -2050,7 +2246,7 @@ export const tools = [
                     qty: { type: "number", description: "Quantity of raw material to be sent out" },
                     rate: { type: "number", description: "Rate per unit of the raw material" },
                     unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
-                    godown: { type: "string", description: "Godown for this component. Required if the company has multi-godown tracking." },
+                    godown: { type: "string", description: "Godown for this component. Auto-fills only if this company has exactly one godown; required if it has more than one." },
                     batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
                   },
                   required: ["stockItem", "qty", "rate", "unit"],
@@ -2092,7 +2288,7 @@ export const tools = [
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
               dueDate: { type: "string", description: "Expected validity/delivery date for this line, DD-MM-YYYY. REQUIRED — same 'Due Date of Order' requirement as create_sales_order." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -2138,7 +2334,7 @@ export const tools = [
               unit: { type: "string", description: "Unit of measure — must match the stock item's unit" },
               salesLedger: { type: "string", description: "Sales ledger this line's amount is notionally posted to" },
               dueDate: { type: "string", description: "Expected validity/delivery date for this line, DD-MM-YYYY. REQUIRED." },
-              godown: { type: "string", description: "Godown for this line. Required if the company has multi-godown tracking." },
+              godown: { type: "string", description: "Godown for this line. Auto-fills only if this company has exactly one godown; if it has more than one (e.g. Dubai/Sharjah/Ajman), this is required and the call fails naming the available godowns rather than guessing." },
               batchName: { type: "string", description: "Real batch/lot number, if the item has batch tracking. Defaults to 'Primary Batch'." },
               discountPercent: { type: "number", description: "Discount percentage applied to this line's amount. Optional." },
             },
@@ -2418,6 +2614,21 @@ export const tools = [
         voucherType: { type: "string", description: "Voucher type, e.g. 'Payment', 'Receipt', 'Journal'" },
         voucherNumber: { type: "string", description: "Exact voucher number of the voucher to update" },
         date: { type: "string", description: "Existing voucher's date in DD-MM-YYYY format" },
+        reference: {
+          type: "string",
+          description:
+            "Free-text reference for this voucher, backed by Tally's voucher-level REFERENCE field — same field " +
+            "and same independence from voucherNumber/bill references as on create_voucher.",
+        },
+        referenceDate: {
+          type: "string",
+          description: "Date for the reference above, in DD-MM-YYYY format (Tally's REFERENCEDATE field). Independent of the voucher's own date.",
+        },
+        buyerTrn: { type: "string", description: "The buyer's TRN on this voucher — same voucher-level field and Sales-class caveat as create_voucher's buyerTrn." },
+        buyerState: { type: "string", description: "The buyer's Emirate/state on this voucher's Party Details." },
+        buyerCountry: { type: "string", description: "The buyer's country on this voucher's Party Details." },
+        placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this voucher." },
+        placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this voucher." },
         narration: { type: "string", description: "New narration / description for the voucher" },
         debitLedger: { type: "string", description: "Ledger name to debit (simple 2-leg mode; omit if using 'entries')" },
         creditLedger: { type: "string", description: "Ledger name to credit (simple 2-leg mode; omit if using 'entries')" },
@@ -2532,7 +2743,7 @@ export const tools = [
     name: "query_sql",
     description:
       "Run a read-only SQL SELECT query against this session's in-memory cache (gone when the session ends). " +
-      "Tables: ledgers(name, parent, closing_balance, trn), groups(name, parent), stock_items(name, parent, " +
+      "Tables: ledgers(name, parent, closing_balance, trn, state, country), groups(name, parent), stock_items(name, parent, " +
       "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration), " +
       "voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, " +
       "is_deemed_positive, godown, batch) — all five populated only by explicitly calling " +
@@ -2546,8 +2757,9 @@ export const tools = [
       "get_balance_sheet/get_trial_balance/get_vat_liability_summary call refreshes its table with that call's " +
       "result, so a follow-up question about the same report can query it here instead of re-fetching from " +
       "Tally. Each of these five only ever holds the most recent call's data, not a history — re-call the " +
-      "report tool if you need a different period. None of the tables track which company they came from — " +
-      "re-sync/re-fetch after switching companies before querying.",
+      "report tool if you need a different period. set_company automatically empties every one of these " +
+      "tables when the active company changes, so a query never silently returns a previous company's rows " +
+      "— it just means every table is empty again right after switching, until re-synced/re-fetched.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2847,6 +3059,9 @@ function buildVoucherEntries(args: {
 function createVoucherXml(args: {
   voucherType: string;
   date: string;
+  voucherNumber?: string;
+  reference?: string;
+  referenceDate?: string;
   narration?: string;
   debitLedger?: string;
   creditLedger?: string;
@@ -2859,14 +3074,68 @@ function createVoucherXml(args: {
   creditCostCentre?: string;
   costCategory?: string;
   entries?: VoucherEntryInput[];
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
 }): string {
   const entries = buildVoucherEntries(args);
   return render("create-voucher.xml.njk", {
     voucherType: args.voucherType,
     tallyDate: args.date.split("-").reverse().join(""),
+    voucherNumber: args.voucherNumber,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
     narration: args.narration ?? "",
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
     entries,
   });
+}
+
+// Omitting godown on an inventory line doesn't just leave it blank — the
+// templates only emit BATCHALLOCATIONS.LIST (godown + batch together) when
+// godown is set, so skipping it silently drops the whole allocation. Tally
+// then rejects the line with "Godown name in Item Allocations is
+// missing/invalid" — visible only in Tally's own Import Exceptions report,
+// never in the gateway's response (confirmed live: blank EXCEPTIONS:1, no
+// LINEERROR text). A company with exactly one godown has an unambiguous
+// default ("Main Location" unless renamed); a company with more than one
+// does NOT — silently guessing one would misallocate stock into the wrong
+// physical location while reporting success. So: 0 godowns → leave unset
+// (no inventory/location feature at all), 1 → use it, 2+ → refuse and make
+// the caller specify. Godowns rarely change mid-session, so this is cached
+// once per session the same way the SQL cache elsewhere in this file is —
+// but a different company can have a completely different godown list, so
+// set_company drops this cache on every switch (confirmed live: without
+// that, a session that queries godowns in one company and then switches
+// would keep serving the first company's stale list under the new one).
+let cachedGodownNames: string[] | null = null;
+async function getGodownNames(): Promise<string[]> {
+  if (cachedGodownNames) return cachedGodownNames;
+  const xml = buildCollectionXml("Godown", [{ name: "NAME" }]);
+  const rows = extractRecords(await tallyRequest(xml)) as { NAME?: string }[];
+  cachedGodownNames = rows.map((r) => String(r.NAME)).filter(Boolean);
+  return cachedGodownNames;
+}
+
+async function resolveGodown(godown: string | undefined, itemLabel: string): Promise<string | undefined> {
+  if (godown) return godown;
+  const godowns = await getGodownNames();
+  if (godowns.length === 0) return undefined;
+  if (godowns.length === 1) return godowns[0];
+  throw new Error(
+    `'${itemLabel}': godown is required — this company has ${godowns.length} godowns ` +
+      `(${godowns.join(", ")}), so there's no safe single default to guess. Pass an explicit godown for this line.`
+  );
+}
+
+async function resolveGodownsForLines<T extends { godown?: string; stockItem: string }>(lines: T[]): Promise<T[]> {
+  return Promise.all(lines.map(async (line) => ({ ...line, godown: await resolveGodown(line.godown, line.stockItem) })));
 }
 
 type StockJournalLineInput = {
@@ -2878,8 +3147,9 @@ type StockJournalLineInput = {
   batchName?: string;
 };
 
-function computeStockJournalLines(lines: StockJournalLineInput[]) {
-  return lines.map((line) => ({
+async function computeStockJournalLines(lines: StockJournalLineInput[]) {
+  const resolved = await resolveGodownsForLines(lines);
+  return resolved.map((line) => ({
     ...line,
     amount: line.qty * line.rate,
     batchName: line.batchName ?? "Primary Batch",
@@ -2902,14 +3172,21 @@ function computeAdditionalCosts(costs: AdditionalCostInput[] | undefined) {
   }));
 }
 
-function createDeliveryNoteXml(args: {
+async function createDeliveryNoteXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string })[];
   voucherNumber?: string;
-}): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  reference?: string;
+  referenceDate?: string;
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+}): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("create-delivery-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -2917,13 +3194,20 @@ function createDeliveryNoteXml(args: {
     items,
     partyAmount,
     voucherNumber: args.voucherNumber,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function updateDeliveryNoteXml(
+async function updateDeliveryNoteXml(
   args: Parameters<typeof createDeliveryNoteXml>[0] & { voucherNumber: string }
-): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("update-delivery-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -2931,17 +3215,32 @@ function updateDeliveryNoteXml(
     partyLedger: args.partyLedger,
     items,
     partyAmount,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function createReceiptNoteXml(args: {
+async function createReceiptNoteXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { purchaseLedger: string })[];
   voucherNumber?: string;
-}): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+  reference?: string;
+  referenceDate?: string;
+  supplierTrn?: string;
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+}): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("create-receipt-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -2949,13 +3248,21 @@ function createReceiptNoteXml(args: {
     items,
     partyAmount,
     voucherNumber: args.voucherNumber,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    supplierTrn: args.supplierTrn,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function updateReceiptNoteXml(
+async function updateReceiptNoteXml(
   args: Parameters<typeof createReceiptNoteXml>[0] & { voucherNumber: string }
-): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("update-receipt-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -2963,18 +3270,26 @@ function updateReceiptNoteXml(
     partyLedger: args.partyLedger,
     items,
     partyAmount,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    supplierTrn: args.supplierTrn,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function createSalesOrderXml(args: {
+async function createSalesOrderXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string; dueDate: string })[];
   orderNumber: string;
   voucherNumber?: string;
-}): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+}): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("create-sales-order.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -2986,10 +3301,10 @@ function createSalesOrderXml(args: {
   });
 }
 
-function updateSalesOrderXml(
+async function updateSalesOrderXml(
   args: Parameters<typeof createSalesOrderXml>[0] & { voucherNumber: string }
-): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("update-sales-order.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3001,15 +3316,15 @@ function updateSalesOrderXml(
   });
 }
 
-function createSalesQuotationXml(args: {
+async function createSalesQuotationXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { salesLedger: string; dueDate: string })[];
   orderNumber: string;
   voucherNumber?: string;
-}): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+}): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("create-sales-quotation.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3021,10 +3336,10 @@ function createSalesQuotationXml(args: {
   });
 }
 
-function updateSalesQuotationXml(
+async function updateSalesQuotationXml(
   args: Parameters<typeof createSalesQuotationXml>[0] & { voucherNumber: string }
-): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("update-sales-quotation.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3056,29 +3371,35 @@ type JobWorkItemInput = {
   components: JobWorkComponentInput[];
 };
 
-function computeJobWorkItems(items: JobWorkItemInput[], dueDates: string[]) {
-  return items.map((item, i) => ({
-    ...item,
-    amount: item.qty * item.rate,
-    batchName: item.batchName ?? "Primary Batch",
-    dueDate: dueDates[i],
-    components: item.components.map((c) => ({
-      ...c,
-      amount: c.qty * c.rate,
-      batchName: c.batchName ?? "Primary Batch",
-    })),
-  }));
+async function computeJobWorkItems(items: JobWorkItemInput[], dueDates: string[]) {
+  const resolvedItems = await resolveGodownsForLines(items);
+  return Promise.all(
+    resolvedItems.map(async (item, i) => {
+      const resolvedComponents = await resolveGodownsForLines(item.components);
+      return {
+        ...item,
+        amount: item.qty * item.rate,
+        batchName: item.batchName ?? "Primary Batch",
+        dueDate: dueDates[i],
+        components: resolvedComponents.map((c) => ({
+          ...c,
+          amount: c.qty * c.rate,
+          batchName: c.batchName ?? "Primary Batch",
+        })),
+      };
+    })
+  );
 }
 
-function createJobWorkInOrderXml(args: {
+async function createJobWorkInOrderXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: JobWorkItemInput[];
   orderNumber: string;
   voucherNumber?: string;
-}): string {
-  const items = computeJobWorkItems(
+}): Promise<string> {
+  const items = await computeJobWorkItems(
     args.items,
     args.items.map((i) => toTallyActionDate(i.dueDate))
   );
@@ -3093,15 +3414,15 @@ function createJobWorkInOrderXml(args: {
   });
 }
 
-function createJobWorkOutOrderXml(args: {
+async function createJobWorkOutOrderXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: JobWorkItemInput[];
   orderNumber: string;
   voucherNumber?: string;
-}): string {
-  const items = computeJobWorkItems(
+}): Promise<string> {
+  const items = await computeJobWorkItems(
     args.items,
     args.items.map((i) => toTallyActionDate(i.dueDate))
   );
@@ -3116,10 +3437,10 @@ function createJobWorkOutOrderXml(args: {
   });
 }
 
-function updateJobWorkInOrderXml(
+async function updateJobWorkInOrderXml(
   args: Parameters<typeof createJobWorkInOrderXml>[0] & { voucherNumber: string }
-): string {
-  const items = computeJobWorkItems(
+): Promise<string> {
+  const items = await computeJobWorkItems(
     args.items,
     args.items.map((i) => toTallyActionDate(i.dueDate))
   );
@@ -3134,10 +3455,10 @@ function updateJobWorkInOrderXml(
   });
 }
 
-function updateJobWorkOutOrderXml(
+async function updateJobWorkOutOrderXml(
   args: Parameters<typeof createJobWorkOutOrderXml>[0] & { voucherNumber: string }
-): string {
-  const items = computeJobWorkItems(
+): Promise<string> {
+  const items = await computeJobWorkItems(
     args.items,
     args.items.map((i) => toTallyActionDate(i.dueDate))
   );
@@ -3152,15 +3473,15 @@ function updateJobWorkOutOrderXml(
   });
 }
 
-function createPurchaseOrderXml(args: {
+async function createPurchaseOrderXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: (Omit<InvoiceItemInput, "vatLedger" | "vatRatePercent"> & { purchaseLedger: string; dueDate: string })[];
   orderNumber: string;
   voucherNumber?: string;
-}): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+}): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("create-purchase-order.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3172,10 +3493,10 @@ function createPurchaseOrderXml(args: {
   });
 }
 
-function updatePurchaseOrderXml(
+async function updatePurchaseOrderXml(
   args: Parameters<typeof createPurchaseOrderXml>[0] & { voucherNumber: string }
-): string {
-  const { items, partyAmount } = computeInvoiceLines(args.items, undefined, undefined);
+): Promise<string> {
+  const { items, partyAmount } = await computeInvoiceLines(args.items, undefined, undefined);
   return render("update-purchase-order.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3187,7 +3508,7 @@ function updatePurchaseOrderXml(
   });
 }
 
-function createStockJournalXml(args: {
+async function createStockJournalXml(args: {
   date: string;
   narration?: string;
   sources: StockJournalLineInput[];
@@ -3198,29 +3519,29 @@ function createStockJournalXml(args: {
   // via create_voucher_type with useAsManufacturingJournal to post against a
   // real Manufacturing Journal instead — same XML shape either way.
   voucherType?: string;
-}): string {
+}): Promise<string> {
   const { date, narration, sources, destinations, additionalCosts, voucherNumber, voucherType } = args;
   return render("create-stock-journal.xml.njk", {
     tallyDate: date.split("-").reverse().join(""),
     narration: narration ?? "",
-    sources: computeStockJournalLines(sources),
-    destinations: computeStockJournalLines(destinations),
+    sources: await computeStockJournalLines(sources),
+    destinations: await computeStockJournalLines(destinations),
     additionalCosts: computeAdditionalCosts(additionalCosts),
     voucherNumber,
     voucherType: voucherType ?? "Stock Journal",
   });
 }
 
-function updateStockJournalXml(
+async function updateStockJournalXml(
   args: Parameters<typeof createStockJournalXml>[0] & { voucherNumber: string }
-): string {
+): Promise<string> {
   const { date, narration, sources, destinations, additionalCosts, voucherNumber, voucherType } = args;
   return render("update-stock-journal.xml.njk", {
     tallyDate: date.split("-").reverse().join(""),
     voucherNumber,
     narration: narration ?? "",
-    sources: computeStockJournalLines(sources),
-    destinations: computeStockJournalLines(destinations),
+    sources: await computeStockJournalLines(sources),
+    destinations: await computeStockJournalLines(destinations),
     additionalCosts: computeAdditionalCosts(additionalCosts),
     voucherType: voucherType ?? "Stock Journal",
   });
@@ -3235,22 +3556,23 @@ type MaterialMoveItemInput = {
   batchName?: string;
 };
 
-function computeMaterialMoveItems(items: MaterialMoveItemInput[]) {
-  return items.map((item) => ({
+async function computeMaterialMoveItems(items: MaterialMoveItemInput[]) {
+  const resolved = await resolveGodownsForLines(items);
+  return resolved.map((item) => ({
     ...item,
     amount: item.qty * item.rate,
     batchName: item.batchName ?? "Primary Batch",
   }));
 }
 
-function createMaterialInXml(args: {
+async function createMaterialInXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
   items: MaterialMoveItemInput[];
   voucherNumber?: string;
-}): string {
-  const computedItems = computeMaterialMoveItems(args.items);
+}): Promise<string> {
+  const computedItems = await computeMaterialMoveItems(args.items);
   return render("create-material-in.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3261,8 +3583,8 @@ function createMaterialInXml(args: {
   });
 }
 
-function createMaterialOutXml(args: Parameters<typeof createMaterialInXml>[0]): string {
-  const computedItems = computeMaterialMoveItems(args.items);
+async function createMaterialOutXml(args: Parameters<typeof createMaterialInXml>[0]): Promise<string> {
+  const computedItems = await computeMaterialMoveItems(args.items);
   return render("create-material-out.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3273,10 +3595,10 @@ function createMaterialOutXml(args: Parameters<typeof createMaterialInXml>[0]): 
   });
 }
 
-function updateMaterialInXml(
+async function updateMaterialInXml(
   args: Parameters<typeof createMaterialInXml>[0] & { voucherNumber: string }
-): string {
-  const computedItems = computeMaterialMoveItems(args.items);
+): Promise<string> {
+  const computedItems = await computeMaterialMoveItems(args.items);
   return render("update-material-in.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3287,8 +3609,8 @@ function updateMaterialInXml(
   });
 }
 
-function updateMaterialOutXml(args: Parameters<typeof updateMaterialInXml>[0]): string {
-  const computedItems = computeMaterialMoveItems(args.items);
+async function updateMaterialOutXml(args: Parameters<typeof updateMaterialInXml>[0]): Promise<string> {
+  const computedItems = await computeMaterialMoveItems(args.items);
   return render("update-material-out.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3299,46 +3621,46 @@ function updateMaterialOutXml(args: Parameters<typeof updateMaterialInXml>[0]): 
   });
 }
 
-function createRejectionsInXml(args: {
+async function createRejectionsInXml(args: {
   date: string;
   narration?: string;
   items: MaterialMoveItemInput[];
   voucherNumber?: string;
-}): string {
+}): Promise<string> {
   return render("create-rejections-in.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
-    items: computeMaterialMoveItems(args.items),
+    items: await computeMaterialMoveItems(args.items),
     voucherNumber: args.voucherNumber,
   });
 }
 
-function createRejectionsOutXml(args: Parameters<typeof createRejectionsInXml>[0]): string {
+async function createRejectionsOutXml(args: Parameters<typeof createRejectionsInXml>[0]): Promise<string> {
   return render("create-rejections-out.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
-    items: computeMaterialMoveItems(args.items),
+    items: await computeMaterialMoveItems(args.items),
     voucherNumber: args.voucherNumber,
   });
 }
 
-function updateRejectionsInXml(
+async function updateRejectionsInXml(
   args: Parameters<typeof createRejectionsInXml>[0] & { voucherNumber: string }
-): string {
+): Promise<string> {
   return render("update-rejections-in.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
-    items: computeMaterialMoveItems(args.items),
+    items: await computeMaterialMoveItems(args.items),
   });
 }
 
-function updateRejectionsOutXml(args: Parameters<typeof updateRejectionsInXml>[0]): string {
+async function updateRejectionsOutXml(args: Parameters<typeof updateRejectionsInXml>[0]): Promise<string> {
   return render("update-rejections-out.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
-    items: computeMaterialMoveItems(args.items),
+    items: await computeMaterialMoveItems(args.items),
   });
 }
 
@@ -3350,28 +3672,30 @@ type PhysicalStockItemInput = {
   batchName?: string;
 };
 
-function createPhysicalStockXml(args: {
+async function createPhysicalStockXml(args: {
   date: string;
   narration?: string;
   items: PhysicalStockItemInput[];
   voucherNumber?: string;
-}): string {
+}): Promise<string> {
+  const resolvedItems = await resolveGodownsForLines(args.items);
   return render("create-physical-stock.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
-    items: args.items.map((item) => ({ ...item, batchName: item.batchName ?? "Primary Batch" })),
+    items: resolvedItems.map((item) => ({ ...item, batchName: item.batchName ?? "Primary Batch" })),
     voucherNumber: args.voucherNumber,
   });
 }
 
-function updatePhysicalStockXml(
+async function updatePhysicalStockXml(
   args: Parameters<typeof createPhysicalStockXml>[0] & { voucherNumber: string }
-): string {
+): Promise<string> {
+  const resolvedItems = await resolveGodownsForLines(args.items);
   return render("update-physical-stock.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
-    items: args.items.map((item) => ({ ...item, batchName: item.batchName ?? "Primary Batch" })),
+    items: resolvedItems.map((item) => ({ ...item, batchName: item.batchName ?? "Primary Batch" })),
   });
 }
 
@@ -3387,7 +3711,7 @@ type InvoiceItemInput = {
   vatRatePercent?: number;
 };
 
-function computeInvoiceLines(
+async function computeInvoiceLines(
   items: InvoiceItemInput[],
   defaultVatLedger: string | undefined,
   defaultVatRatePercent: number | undefined
@@ -3401,7 +3725,8 @@ function computeInvoiceLines(
     throw new Error("vatRatePercent is required when vatLedger is set.");
   }
 
-  const computedItems = items.map((item) => {
+  const godownResolved = await resolveGodownsForLines(items);
+  const computedItems = godownResolved.map((item) => {
     const gross = item.qty * item.rate;
     const discounted = item.discountPercent ? gross * (1 - item.discountPercent / 100) : gross;
     return {
@@ -3433,7 +3758,7 @@ function computeInvoiceLines(
   return { items: computedItems, taxGroups, partyAmount };
 }
 
-function createSalesInvoiceXml(args: {
+async function createSalesInvoiceXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
@@ -3443,8 +3768,15 @@ function createSalesInvoiceXml(args: {
   billName?: string;
   billType?: string;
   voucherNumber?: string;
-}): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  reference?: string;
+  referenceDate?: string;
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+}): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-sales-invoice.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3455,10 +3787,17 @@ function createSalesInvoiceXml(args: {
     billName: args.billName,
     billType: args.billType ?? "New Ref",
     voucherNumber: args.voucherNumber,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function createPurchaseInvoiceXml(args: {
+async function createPurchaseInvoiceXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
@@ -3468,8 +3807,16 @@ function createPurchaseInvoiceXml(args: {
   billName?: string;
   billType?: string;
   voucherNumber?: string;
-}): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  reference?: string;
+  referenceDate?: string;
+  supplierTrn?: string;
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+}): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-purchase-invoice.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3479,11 +3826,19 @@ function createPurchaseInvoiceXml(args: {
     taxGroups,
     billName: args.billName,
     billType: args.billType ?? "New Ref",
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    supplierTrn: args.supplierTrn,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
     voucherNumber: args.voucherNumber,
   });
 }
 
-function createCreditNoteXml(args: {
+async function createCreditNoteXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
@@ -3493,8 +3848,15 @@ function createCreditNoteXml(args: {
   billName?: string;
   billType?: string;
   voucherNumber?: string;
-}): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  reference?: string;
+  referenceDate?: string;
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+}): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-credit-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3502,13 +3864,20 @@ function createCreditNoteXml(args: {
     items,
     partyAmount,
     taxGroups,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
     billName: args.billName,
     billType: args.billType ?? "Agst Ref",
     voucherNumber: args.voucherNumber,
   });
 }
 
-function createDebitNoteXml(args: {
+async function createDebitNoteXml(args: {
   date: string;
   narration?: string;
   partyLedger: string;
@@ -3518,8 +3887,16 @@ function createDebitNoteXml(args: {
   billName?: string;
   billType?: string;
   voucherNumber?: string;
-}): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+  reference?: string;
+  referenceDate?: string;
+  supplierTrn?: string;
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+}): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-debit-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
@@ -3527,16 +3904,24 @@ function createDebitNoteXml(args: {
     items,
     partyAmount,
     taxGroups,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    supplierTrn: args.supplierTrn,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
     billName: args.billName,
     billType: args.billType ?? "Agst Ref",
     voucherNumber: args.voucherNumber,
   });
 }
 
-function updateSalesInvoiceXml(
+async function updateSalesInvoiceXml(
   args: Parameters<typeof createSalesInvoiceXml>[0] & { voucherNumber: string }
-): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-sales-invoice.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3547,13 +3932,20 @@ function updateSalesInvoiceXml(
     taxGroups,
     billName: args.billName,
     billType: args.billType ?? "New Ref",
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function updatePurchaseInvoiceXml(
+async function updatePurchaseInvoiceXml(
   args: Parameters<typeof createPurchaseInvoiceXml>[0] & { voucherNumber: string }
-): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-purchase-invoice.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3564,13 +3956,21 @@ function updatePurchaseInvoiceXml(
     taxGroups,
     billName: args.billName,
     billType: args.billType ?? "New Ref",
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    supplierTrn: args.supplierTrn,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function updateCreditNoteXml(
+async function updateCreditNoteXml(
   args: Parameters<typeof createCreditNoteXml>[0] & { voucherNumber: string }
-): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-credit-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3581,13 +3981,20 @@ function updateCreditNoteXml(
     taxGroups,
     billName: args.billName,
     billType: args.billType ?? "Agst Ref",
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
-function updateDebitNoteXml(
+async function updateDebitNoteXml(
   args: Parameters<typeof createDebitNoteXml>[0] & { voucherNumber: string }
-): string {
-  const { items, taxGroups, partyAmount } = computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
+): Promise<string> {
+  const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-debit-note.xml.njk", {
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3598,6 +4005,14 @@ function updateDebitNoteXml(
     taxGroups,
     billName: args.billName,
     billType: args.billType ?? "Agst Ref",
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    supplierTrn: args.supplierTrn,
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
   });
 }
 
@@ -3737,6 +4152,8 @@ function updateVoucherXml(args: {
   voucherType: string;
   voucherNumber: string;
   date: string;
+  reference?: string;
+  referenceDate?: string;
   narration?: string;
   debitLedger?: string;
   creditLedger?: string;
@@ -3745,13 +4162,25 @@ function updateVoucherXml(args: {
   creditCostCentre?: string;
   costCategory?: string;
   entries?: VoucherEntryInput[];
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
 }): string {
   const entries = buildVoucherEntries(args);
   return render("update-voucher.xml.njk", {
     voucherType: args.voucherType,
     voucherNumber: args.voucherNumber,
+    reference: args.reference,
+    referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
+    buyerTrn: args.buyerTrn,
+    buyerState: args.buyerState,
+    buyerCountry: args.buyerCountry,
+    placeOfSupplyEmirate: args.placeOfSupplyEmirate,
+    placeOfSupplyCountry: args.placeOfSupplyCountry,
     entries,
   });
 }
@@ -4272,6 +4701,8 @@ export async function handleTool(
         },
         { name: "CLOSINGBALANCE", datatype: "amount" },
         { name: "VATTINNUMBER" },
+        { name: "STATE", expression: "$LedStateName" },
+        { name: "COUNTRY", expression: "$CountryName" },
       ]);
       const result = await tallyRequest(xml);
       if (!query) {
@@ -4810,6 +5241,14 @@ export async function handleTool(
             `currently open in Tally (only companies already loaded in Tally can be switched to).`
         );
       }
+      // Godown names (see getGodownNames) and the local SQL cache (ledgers,
+      // vouchers, P&L, stock summary, ...) are both cached per session — a
+      // different company has completely different data for all of them, so
+      // both caches are stale the moment the active company changes and must
+      // be dropped here rather than silently serving the old company's rows
+      // under the new company's name.
+      cachedGodownNames = null;
+      await clearCache();
       return JSON.stringify("OK");
     }
 
@@ -4827,6 +5266,9 @@ export async function handleTool(
       const voucherArgs = args as {
         voucherType: string;
         date: string;
+        voucherNumber?: string;
+        reference?: string;
+        referenceDate?: string;
         narration?: string;
         debitLedger?: string;
         creditLedger?: string;
@@ -4839,15 +5281,22 @@ export async function handleTool(
         creditCostCentre?: string;
         costCategory?: string;
         entries?: VoucherEntryInput[];
+        buyerTrn?: string;
+        buyerState?: string;
+        buyerCountry?: string;
+        placeOfSupplyEmirate?: string;
+        placeOfSupplyCountry?: string;
       };
       const xml = createVoucherXml(voucherArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite(voucherArgs.voucherType, undefined, voucherArgs.date));
+      return checkImportResult(result, () =>
+        verifyVoucherWrite(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date)
+      );
     }
 
     case "create_sales_invoice": {
       const invoiceArgs = args as Parameters<typeof createSalesInvoiceXml>[0];
-      const xml = createSalesInvoiceXml(invoiceArgs);
+      const xml = await createSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
@@ -4855,14 +5304,14 @@ export async function handleTool(
     case "update_sales_invoice": {
       const invoiceArgs = args as Parameters<typeof updateSalesInvoiceXml>[0];
       await assertVoucherUnambiguous("Sales", invoiceArgs.voucherNumber, invoiceArgs.date);
-      const xml = updateSalesInvoiceXml(invoiceArgs);
+      const xml = await updateSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "create_purchase_invoice": {
       const invoiceArgs = args as Parameters<typeof createPurchaseInvoiceXml>[0];
-      const xml = createPurchaseInvoiceXml(invoiceArgs);
+      const xml = await createPurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
@@ -4870,14 +5319,14 @@ export async function handleTool(
     case "update_purchase_invoice": {
       const invoiceArgs = args as Parameters<typeof updatePurchaseInvoiceXml>[0];
       await assertVoucherUnambiguous("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date);
-      const xml = updatePurchaseInvoiceXml(invoiceArgs);
+      const xml = await updatePurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "create_credit_note": {
       const noteArgs = args as Parameters<typeof createCreditNoteXml>[0];
-      const xml = createCreditNoteXml(noteArgs);
+      const xml = await createCreditNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Credit Note", noteArgs.voucherNumber, noteArgs.date));
     }
@@ -4885,14 +5334,14 @@ export async function handleTool(
     case "update_credit_note": {
       const noteArgs = args as Parameters<typeof updateCreditNoteXml>[0];
       await assertVoucherUnambiguous("Credit Note", noteArgs.voucherNumber, noteArgs.date);
-      const xml = updateCreditNoteXml(noteArgs);
+      const xml = await updateCreditNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Credit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_debit_note": {
       const noteArgs = args as Parameters<typeof createDebitNoteXml>[0];
-      const xml = createDebitNoteXml(noteArgs);
+      const xml = await createDebitNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Debit Note", noteArgs.voucherNumber, noteArgs.date));
     }
@@ -4900,14 +5349,14 @@ export async function handleTool(
     case "update_debit_note": {
       const noteArgs = args as Parameters<typeof updateDebitNoteXml>[0];
       await assertVoucherUnambiguous("Debit Note", noteArgs.voucherNumber, noteArgs.date);
-      const xml = updateDebitNoteXml(noteArgs);
+      const xml = await updateDebitNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Debit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_delivery_note": {
       const noteArgs = args as Parameters<typeof createDeliveryNoteXml>[0];
-      const xml = createDeliveryNoteXml(noteArgs);
+      const xml = await createDeliveryNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Delivery Note", noteArgs.voucherNumber, noteArgs.date));
     }
@@ -4915,14 +5364,14 @@ export async function handleTool(
     case "update_delivery_note": {
       const noteArgs = args as Parameters<typeof updateDeliveryNoteXml>[0];
       await assertVoucherUnambiguous("Delivery Note", noteArgs.voucherNumber, noteArgs.date);
-      const xml = updateDeliveryNoteXml(noteArgs);
+      const xml = await updateDeliveryNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Delivery Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_receipt_note": {
       const noteArgs = args as Parameters<typeof createReceiptNoteXml>[0];
-      const xml = createReceiptNoteXml(noteArgs);
+      const xml = await createReceiptNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Receipt Note", noteArgs.voucherNumber, noteArgs.date));
     }
@@ -4930,14 +5379,14 @@ export async function handleTool(
     case "update_receipt_note": {
       const noteArgs = args as Parameters<typeof updateReceiptNoteXml>[0];
       await assertVoucherUnambiguous("Receipt Note", noteArgs.voucherNumber, noteArgs.date);
-      const xml = updateReceiptNoteXml(noteArgs);
+      const xml = await updateReceiptNoteXml(noteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Receipt Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_sales_order": {
       const orderArgs = args as Parameters<typeof createSalesOrderXml>[0];
-      const xml = createSalesOrderXml(orderArgs);
+      const xml = await createSalesOrderXml(orderArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Sales Order", orderArgs.voucherNumber, orderArgs.date));
     }
@@ -4945,14 +5394,14 @@ export async function handleTool(
     case "update_sales_order": {
       const orderArgs = args as Parameters<typeof updateSalesOrderXml>[0];
       await assertVoucherUnambiguous("Sales Order", orderArgs.voucherNumber, orderArgs.date);
-      const xml = updateSalesOrderXml(orderArgs);
+      const xml = await updateSalesOrderXml(orderArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Sales Order", orderArgs.voucherNumber, orderArgs.date));
     }
 
     case "create_purchase_order": {
       const orderArgs = args as Parameters<typeof createPurchaseOrderXml>[0];
-      const xml = createPurchaseOrderXml(orderArgs);
+      const xml = await createPurchaseOrderXml(orderArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Purchase Order", orderArgs.voucherNumber, orderArgs.date));
     }
@@ -4960,14 +5409,14 @@ export async function handleTool(
     case "update_purchase_order": {
       const orderArgs = args as Parameters<typeof updatePurchaseOrderXml>[0];
       await assertVoucherUnambiguous("Purchase Order", orderArgs.voucherNumber, orderArgs.date);
-      const xml = updatePurchaseOrderXml(orderArgs);
+      const xml = await updatePurchaseOrderXml(orderArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Purchase Order", orderArgs.voucherNumber, orderArgs.date));
     }
 
     case "create_job_work_in_order": {
       const jwArgs = args as Parameters<typeof createJobWorkInOrderXml>[0];
-      const xml = createJobWorkInOrderXml(jwArgs);
+      const xml = await createJobWorkInOrderXml(jwArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Job Work In Order", jwArgs.voucherNumber, jwArgs.date));
     }
@@ -4975,14 +5424,14 @@ export async function handleTool(
     case "update_job_work_in_order": {
       const jwArgs = args as Parameters<typeof updateJobWorkInOrderXml>[0];
       await assertVoucherUnambiguous("Job Work In Order", jwArgs.voucherNumber, jwArgs.date);
-      const xml = updateJobWorkInOrderXml(jwArgs);
+      const xml = await updateJobWorkInOrderXml(jwArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Job Work In Order", jwArgs.voucherNumber, jwArgs.date));
     }
 
     case "create_job_work_out_order": {
       const jwArgs = args as Parameters<typeof createJobWorkOutOrderXml>[0];
-      const xml = createJobWorkOutOrderXml(jwArgs);
+      const xml = await createJobWorkOutOrderXml(jwArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date));
     }
@@ -4990,14 +5439,14 @@ export async function handleTool(
     case "update_job_work_out_order": {
       const jwArgs = args as Parameters<typeof updateJobWorkOutOrderXml>[0];
       await assertVoucherUnambiguous("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date);
-      const xml = updateJobWorkOutOrderXml(jwArgs);
+      const xml = await updateJobWorkOutOrderXml(jwArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Job Work Out Order", jwArgs.voucherNumber, jwArgs.date));
     }
 
     case "create_sales_quotation": {
       const quoteArgs = args as Parameters<typeof createSalesQuotationXml>[0];
-      const xml = createSalesQuotationXml(quoteArgs);
+      const xml = await createSalesQuotationXml(quoteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date));
     }
@@ -5005,14 +5454,14 @@ export async function handleTool(
     case "update_sales_quotation": {
       const quoteArgs = args as Parameters<typeof updateSalesQuotationXml>[0];
       await assertVoucherUnambiguous("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date);
-      const xml = updateSalesQuotationXml(quoteArgs);
+      const xml = await updateSalesQuotationXml(quoteArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Sales Quotation", quoteArgs.voucherNumber, quoteArgs.date));
     }
 
     case "create_stock_journal": {
       const stockJournalArgs = args as Parameters<typeof createStockJournalXml>[0];
-      const xml = createStockJournalXml(stockJournalArgs);
+      const xml = await createStockJournalXml(stockJournalArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite(stockJournalArgs.voucherType ?? "Stock Journal", stockJournalArgs.voucherNumber, stockJournalArgs.date)
@@ -5026,7 +5475,7 @@ export async function handleTool(
         stockJournalArgs.voucherNumber,
         stockJournalArgs.date
       );
-      const xml = updateStockJournalXml(stockJournalArgs);
+      const xml = await updateStockJournalXml(stockJournalArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite(stockJournalArgs.voucherType ?? "Stock Journal", stockJournalArgs.voucherNumber, stockJournalArgs.date)
@@ -5035,7 +5484,7 @@ export async function handleTool(
 
     case "create_material_in": {
       const materialArgs = args as Parameters<typeof createMaterialInXml>[0];
-      const xml = createMaterialInXml(materialArgs);
+      const xml = await createMaterialInXml(materialArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Material In", materialArgs.voucherNumber, materialArgs.date));
     }
@@ -5043,14 +5492,14 @@ export async function handleTool(
     case "update_material_in": {
       const materialArgs = args as Parameters<typeof updateMaterialInXml>[0];
       await assertVoucherUnambiguous("Material In", materialArgs.voucherNumber, materialArgs.date);
-      const xml = updateMaterialInXml(materialArgs);
+      const xml = await updateMaterialInXml(materialArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Material In", materialArgs.voucherNumber, materialArgs.date));
     }
 
     case "create_material_out": {
       const materialArgs = args as Parameters<typeof createMaterialOutXml>[0];
-      const xml = createMaterialOutXml(materialArgs);
+      const xml = await createMaterialOutXml(materialArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Material Out", materialArgs.voucherNumber, materialArgs.date));
     }
@@ -5058,14 +5507,14 @@ export async function handleTool(
     case "update_material_out": {
       const materialArgs = args as Parameters<typeof updateMaterialOutXml>[0];
       await assertVoucherUnambiguous("Material Out", materialArgs.voucherNumber, materialArgs.date);
-      const xml = updateMaterialOutXml(materialArgs);
+      const xml = await updateMaterialOutXml(materialArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Material Out", materialArgs.voucherNumber, materialArgs.date));
     }
 
     case "create_rejections_in": {
       const rejArgs = args as Parameters<typeof createRejectionsInXml>[0];
-      const xml = createRejectionsInXml(rejArgs);
+      const xml = await createRejectionsInXml(rejArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Rejections In", rejArgs.voucherNumber, rejArgs.date));
     }
@@ -5073,14 +5522,14 @@ export async function handleTool(
     case "update_rejections_in": {
       const rejArgs = args as Parameters<typeof updateRejectionsInXml>[0];
       await assertVoucherUnambiguous("Rejections In", rejArgs.voucherNumber, rejArgs.date);
-      const xml = updateRejectionsInXml(rejArgs);
+      const xml = await updateRejectionsInXml(rejArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Rejections In", rejArgs.voucherNumber, rejArgs.date));
     }
 
     case "create_rejections_out": {
       const rejArgs = args as Parameters<typeof createRejectionsOutXml>[0];
-      const xml = createRejectionsOutXml(rejArgs);
+      const xml = await createRejectionsOutXml(rejArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Rejections Out", rejArgs.voucherNumber, rejArgs.date));
     }
@@ -5088,14 +5537,14 @@ export async function handleTool(
     case "update_rejections_out": {
       const rejArgs = args as Parameters<typeof updateRejectionsOutXml>[0];
       await assertVoucherUnambiguous("Rejections Out", rejArgs.voucherNumber, rejArgs.date);
-      const xml = updateRejectionsOutXml(rejArgs);
+      const xml = await updateRejectionsOutXml(rejArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () => verifyVoucherWrite("Rejections Out", rejArgs.voucherNumber, rejArgs.date));
     }
 
     case "create_physical_stock": {
       const physicalStockArgs = args as Parameters<typeof createPhysicalStockXml>[0];
-      const xml = createPhysicalStockXml(physicalStockArgs);
+      const xml = await createPhysicalStockXml(physicalStockArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date)
@@ -5105,7 +5554,7 @@ export async function handleTool(
     case "update_physical_stock": {
       const physicalStockArgs = args as Parameters<typeof updatePhysicalStockXml>[0];
       await assertVoucherUnambiguous("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date);
-      const xml = updatePhysicalStockXml(physicalStockArgs);
+      const xml = await updatePhysicalStockXml(physicalStockArgs);
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite("Physical Stock", physicalStockArgs.voucherNumber, physicalStockArgs.date)
@@ -5253,6 +5702,8 @@ export async function handleTool(
         voucherType: string;
         voucherNumber: string;
         date: string;
+        reference?: string;
+        referenceDate?: string;
         narration?: string;
         debitLedger?: string;
         creditLedger?: string;
@@ -5261,6 +5712,11 @@ export async function handleTool(
         creditCostCentre?: string;
         costCategory?: string;
         entries?: VoucherEntryInput[];
+        buyerTrn?: string;
+        buyerState?: string;
+        buyerCountry?: string;
+        placeOfSupplyEmirate?: string;
+        placeOfSupplyCountry?: string;
       };
       await assertVoucherUnambiguous(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date);
       const xml = updateVoucherXml(voucherArgs);

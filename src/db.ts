@@ -30,7 +30,9 @@ function parseTallyDate(s: string): string | null {
 // In-memory Postgres (WASM), scoped to this session only. A consultant using
 // this against many different client companies should not have one
 // company's cached vouchers silently outlive the session and mix with the
-// next company's — starting fresh each session/company avoids that entirely.
+// next company's — starting fresh each session avoids that, and clearCache()
+// (called from set_company) avoids the same mixing within a single session
+// that switches companies partway through.
 const db = new PGlite();
 let schemaReady: Promise<void> | null = null;
 
@@ -41,7 +43,9 @@ async function ensureSchema(): Promise<void> {
         name TEXT PRIMARY KEY,
         parent TEXT,
         closing_balance NUMERIC,
-        trn TEXT
+        trn TEXT,
+        state TEXT,
+        country TEXT
       );
       CREATE TABLE IF NOT EXISTS groups (
         name TEXT PRIMARY KEY,
@@ -130,6 +134,24 @@ async function ensureSchema(): Promise<void> {
   await schemaReady;
 }
 
+// Drops every row from every cached table without dropping the tables
+// themselves (ensureSchema's CREATE TABLE IF NOT EXISTS would otherwise
+// leave them empty-but-present anyway, but TRUNCATE is the correct verb for
+// "same shape, no data"). Call this whenever the active Tally company
+// changes — none of these tables track which company their rows came from
+// (confirmed live: they don't even carry a company column), so a session
+// that queries one company and then switches to another must not go on
+// serving the first company's rows under the new company's name.
+export async function clearCache(): Promise<void> {
+  if (!schemaReady) return; // schema was never created, nothing to clear
+  await schemaReady;
+  await db.exec(`
+    TRUNCATE TABLE ledgers, groups, stock_items, vouchers, voucher_items,
+      profit_and_loss, stock_summary, balance_sheet, trial_balance,
+      vat_summary, gst_summary;
+  `);
+}
+
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -162,6 +184,8 @@ export async function syncAll(): Promise<string> {
       { name: "PARENT" },
       { name: "CLOSINGBALANCE", datatype: "amount" },
       { name: "VATTINNUMBER" },
+      { name: "STATE", expression: "$LedStateName" },
+      { name: "COUNTRY", expression: "$CountryName" },
     ]),
     fetchCollection("Group", [{ name: "NAME" }, { name: "PARENT" }]),
     fetchCollection("Stock Item", [{ name: "NAME" }, { name: "PARENT" }, { name: "CLOSINGBALANCE", datatype: "quantity" }]),
@@ -171,11 +195,13 @@ export async function syncAll(): Promise<string> {
   try {
     await db.exec("DELETE FROM ledgers");
     for (const l of ledgers) {
-      await db.query("INSERT INTO ledgers (name, parent, closing_balance, trn) VALUES ($1, $2, $3, $4)", [
+      await db.query("INSERT INTO ledgers (name, parent, closing_balance, trn, state, country) VALUES ($1, $2, $3, $4, $5, $6)", [
         str(l.NAME),
         str(l.PARENT),
         num(l.CLOSINGBALANCE),
         str(l.VATTINNUMBER),
+        str(l.STATE),
+        str(l.COUNTRY),
       ]);
     }
 

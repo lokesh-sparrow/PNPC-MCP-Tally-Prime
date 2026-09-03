@@ -9,6 +9,14 @@
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
           <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="{{ voucherType }}" ACTION="Alter">
             <VOUCHERTYPENAME>{{ voucherType }}</VOUCHERTYPENAME>
+            {% if reference %}<REFERENCE>{{ reference }}</REFERENCE>{% endif %}
+            {% if referenceDate %}<REFERENCEDATE>{{ referenceDate }}</REFERENCEDATE>{% endif %}
+            {% if buyerTrn %}<TRADERCONSVATTINNO>{{ buyerTrn }}</TRADERCONSVATTINNO>
+            <BASICBUYERSSALESTAXNO>{{ buyerTrn }}</BASICBUYERSSALESTAXNO>{% endif %}
+            {% if buyerState %}<STATENAME>{{ buyerState }}</STATENAME>{% endif %}
+            {% if buyerCountry %}<COUNTRYOFRESIDENCE>{{ buyerCountry }}</COUNTRYOFRESIDENCE>{% endif %}
+            {% if placeOfSupplyEmirate %}<EMIRATEPOS>{{ placeOfSupplyEmirate }}</EMIRATEPOS>{% endif %}
+            {% if placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
             {% for entry in entries %}<ALLLEDGERENTRIES.LIST>
               <LEDGERNAME>{{ entry.ledgerName }}</LEDGERNAME>
