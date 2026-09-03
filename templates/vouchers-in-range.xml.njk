@@ -27,14 +27,21 @@
             <SCROLLED>Vertical</SCROLLED>
           </PART>
           <LINE NAME="PNPCMCPVouchersInRangeLine">
-            <FIELDS>FldGuid,FldDate,FldVoucherType,FldVoucherNumber,FldPartyLedger,FldAmount,FldNarration</FIELDS>
+            <FIELDS>FldGuid,FldDate,FldVoucherType,FldVoucherNumber,FldReference,FldReferenceDate,FldPartyLedger,FldAmount,FldNarration,FldBuyerTrn,FldBuyerState,FldBuyerCountry,FldEmiratePos,FldPlaceOfSupplyCountry</FIELDS>
             <XMLTAG>ROW</XMLTAG>
           </LINE>
           <FIELD NAME="FldGuid"><SET>$Guid</SET><XMLTAG>guid</XMLTAG></FIELD>
           <FIELD NAME="FldDate"><SET>$Date</SET><XMLTAG>date</XMLTAG></FIELD>
           <FIELD NAME="FldVoucherType"><SET>$VoucherTypeName</SET><XMLTAG>voucher_type</XMLTAG></FIELD>
           <FIELD NAME="FldVoucherNumber"><SET>$VoucherNumber</SET><XMLTAG>voucher_number</XMLTAG></FIELD>
+          <FIELD NAME="FldReference"><SET>$Reference</SET><XMLTAG>reference</XMLTAG></FIELD>
+          <FIELD NAME="FldReferenceDate"><SET>if $$IsEmpty:$ReferenceDate then "" else $$PyrlYYYYMMDDFormat:$ReferenceDate:"-"</SET><XMLTAG>reference_date</XMLTAG></FIELD>
           <FIELD NAME="FldPartyLedger"><SET>$PartyLedgerName</SET><XMLTAG>party_ledger</XMLTAG></FIELD>
+          <FIELD NAME="FldBuyerTrn"><SET>$TraderConsVatTinNo</SET><XMLTAG>buyer_trn</XMLTAG></FIELD>
+          <FIELD NAME="FldBuyerState"><SET>$StateName</SET><XMLTAG>buyer_state</XMLTAG></FIELD>
+          <FIELD NAME="FldBuyerCountry"><SET>$CountryOfResidence</SET><XMLTAG>buyer_country</XMLTAG></FIELD>
+          <FIELD NAME="FldEmiratePos"><SET>$EmiratePos</SET><XMLTAG>place_of_supply_emirate</XMLTAG></FIELD>
+          <FIELD NAME="FldPlaceOfSupplyCountry"><SET>$PlaceOfSupplyCountry</SET><XMLTAG>place_of_supply_country</XMLTAG></FIELD>
           <FIELD NAME="FldAmount"><SET>$$StringFindAndReplace:(if $$IsDebit:($AllLedgerEntries[1,@@FilterPartyLedger].Amount) then -$$NumValue:$AllLedgerEntries[1,@@FilterPartyLedger].Amount else $$NumValue:$AllLedgerEntries[1,@@FilterPartyLedger].Amount):"(-)":"-"</SET><XMLTAG>amount</XMLTAG></FIELD>
           <FIELD NAME="FldNarration"><SET>$Narration</SET><XMLTAG>narration</XMLTAG></FIELD>
           <COLLECTION NAME="PNPCMCPVouchersInRangeCollection">

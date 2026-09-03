@@ -109,16 +109,47 @@ exception(s)" or "Failed" when that's what actually happened, and surfaces
 of the raw JSON to find it.
 
 ### `CREATED:0`, `EXCEPTIONS:1`, no error text at all
-This is the hardest failure mode — Tally's gateway gives zero explanation.
-The most common cause: **the company has godown/batch
-tracking enabled, and an inventory voucher line was sent without a
-`godown`.** `create_stock_journal`, `create_physical_stock`, and the
-item-invoice tools all treat `godown` as optional in the schema, but if the
-company enforces location tracking, Tally silently refuses the whole
-voucher rather than defaulting to a "Main Location." Fix: pass `godown` on
-every line for companies with location tracking on. There is no way to
-detect this from the API response alone — if you hit a blank `EXCEPTIONS:1`,
-try again with an explicit godown before assuming something else is wrong.
+This is the hardest failure mode — Tally's gateway gives zero explanation
+(the real cause, e.g. "Godown name in Item Allocations is missing/invalid",
+only shows up in Tally's own Import Exceptions report, never in the gateway
+response). The most common historical cause was an inventory voucher line
+sent with no `godown` on a company with location tracking enabled —
+**fixed as of this connector's godown-resolution change**: every inventory
+line across `create_stock_journal`, `create_physical_stock`, the
+item-invoice tools, Material In/Out, Rejections In/Out, and Job Work orders
+now resolves `godown` against a live query of the company's actual godowns
+when none is given — if there's exactly one, it's used automatically (the
+same way `batchName` already defaulted to "Primary Batch"); if the company
+has two or more (e.g. Dubai/Sharjah/Ajman), the call fails up front with a
+clear error naming the available godowns instead of guessing one and
+silently misallocating stock into the wrong location. If you still hit a
+blank `EXCEPTIONS:1` after this fix, the cause is something else — check
+the voucher date is inside Tally's active period (see below), and that
+every ledger/stock item name referenced actually exists.
+
+The godown list itself is cached for the session so repeated writes don't
+re-query it every time — **fixed as of the same change:** this cache is now
+dropped on every `set_company` call. Confirmed live this was a real gap:
+before the fix, querying godowns in one company and then switching to a
+different one via `set_company` kept serving the first company's godown
+list under the new company's name, which is exactly the wrong-location risk
+this whole mechanism exists to prevent.
+
+### `reference`/`buyerTrn`/`buyerState`/`buyerCountry`/`placeOfSupplyEmirate`/`placeOfSupplyCountry` don't show up on the voucher
+Confirmed live on two real companies with identical, verified-correct XML
+(checked with `preview_write` byte-for-byte) but different results: on one
+company's custom "Tax Invoice" voucher type, every field landed exactly as
+sent; on another company's standard "Sales" voucher type, only `REFERENCE`
+persisted — `REFERENCEDATE` and the whole Buyer Details block
+(`TRADERCONSVATTINNO`/`BASICBUYERSSALESTAXNO`/`STATENAME`/
+`COUNTRYOFRESIDENCE`/`EMIRATEPOS`/`PLACEOFSUPPLYCOUNTRY`) were silently
+dropped. This is not a connector bug — these fields only take effect when
+the matching Tally voucher configuration is actually turned on for that
+voucher type in that company (`Alt+F12` on the voucher entry screen →
+"Provide Buyer details" and "Provide Reference No. and Date"). Sending
+them when the feature is off is harmless — Tally just ignores them — but
+they won't appear anywhere. Check that screen in Tally's UI before assuming
+the value wasn't sent; verify with `preview_write` if in doubt.
 
 ### `EXCEPTIONS:1` with `LINEERROR: "Voucher date is missing"` — the date is outside Tally's active period
 Confirmed live: Tally's XML gateway rejects a voucher whose date falls

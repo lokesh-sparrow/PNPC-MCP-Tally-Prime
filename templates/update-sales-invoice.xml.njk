@@ -12,9 +12,17 @@
             <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
             <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
             <ISINVOICE>Yes</ISINVOICE>
+            {% if reference %}<REFERENCE>{{ reference }}</REFERENCE>{% endif %}
+            {% if referenceDate %}<REFERENCEDATE>{{ referenceDate }}</REFERENCEDATE>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
             <PARTYNAME>{{ partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            {% if buyerTrn %}<TRADERCONSVATTINNO>{{ buyerTrn }}</TRADERCONSVATTINNO>
+            <BASICBUYERSSALESTAXNO>{{ buyerTrn }}</BASICBUYERSSALESTAXNO>{% endif %}
+            {% if buyerState %}<STATENAME>{{ buyerState }}</STATENAME>{% endif %}
+            {% if buyerCountry %}<COUNTRYOFRESIDENCE>{{ buyerCountry }}</COUNTRYOFRESIDENCE>{% endif %}
+            {% if placeOfSupplyEmirate %}<EMIRATEPOS>{{ placeOfSupplyEmirate }}</EMIRATEPOS>{% endif %}
+            {% if placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
             {% for item in items %}<ALLINVENTORYENTRIES.LIST>
               <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
               <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
