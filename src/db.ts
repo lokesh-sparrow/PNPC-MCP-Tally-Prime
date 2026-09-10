@@ -129,6 +129,22 @@ async function ensureSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_voucher_items_date ON voucher_items(date);
       CREATE INDEX IF NOT EXISTS idx_voucher_items_stock_item ON voucher_items(stock_item);
       CREATE INDEX IF NOT EXISTS idx_voucher_items_godown ON voucher_items(godown);
+      CREATE TABLE IF NOT EXISTS voucher_ledger_entries (
+        id SERIAL PRIMARY KEY,
+        voucher_guid TEXT,
+        date DATE,
+        voucher_type TEXT,
+        voucher_number TEXT,
+        ledger TEXT,
+        amount NUMERIC,
+        is_deemed_positive BOOLEAN,
+        cost_centre TEXT,
+        bill_name TEXT,
+        bill_type TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_vle_date ON voucher_ledger_entries(date);
+      CREATE INDEX IF NOT EXISTS idx_vle_ledger ON voucher_ledger_entries(ledger);
+      CREATE INDEX IF NOT EXISTS idx_vle_voucher_type ON voucher_ledger_entries(voucher_type);
     `).then(() => undefined);
   }
   await schemaReady;
@@ -147,8 +163,8 @@ export async function clearCache(): Promise<void> {
   await schemaReady;
   await db.exec(`
     TRUNCATE TABLE ledgers, groups, stock_items, vouchers, voucher_items,
-      profit_and_loss, stock_summary, balance_sheet, trial_balance,
-      vat_summary, gst_summary;
+      voucher_ledger_entries, profit_and_loss, stock_summary, balance_sheet,
+      trial_balance, vat_summary, gst_summary;
   `);
 }
 
@@ -364,6 +380,89 @@ export async function syncVoucherItems(from: string, to: string): Promise<string
     `godown-wise stock (GROUP BY godown), or batch-level detail — there is no separate "report" tool for these, ` +
     `it's just SQL over this table via query_sql. Note: qty/amount are unsigned as Tally stores them — use ` +
     `is_deemed_positive and voucher_type together to determine inward vs outward direction for movement analysis.`
+  );
+}
+
+function syncVoucherLedgerEntriesXml(fromDate: string, toDate: string): string {
+  return render("voucher-ledger-entries.xml.njk", { fromDate, toDate });
+}
+
+// Syncs voucher LEDGER LINES (party/sales/VAT/expense ledger, amount,
+// cost centre, bill allocation — one row per ledger line per bill
+// allocation) for one date range into the session-scoped cache. This is
+// the piece get_vouchers/sync_vouchers_to_sql can't provide — those return
+// only each voucher's single overall total, not which ledgers it actually
+// posted to and for how much. Needed whenever a ledger's balance has to be
+// broken down by the vouchers that make it up (e.g. splitting a combined
+// VAT ledger into Output vs Input by grouping these rows by voucher_type,
+// or reconciling a party ledger's movements voucher by voucher) — reusing
+// the same TDL template verifyVoucherWrite already relies on internally
+// for single-voucher post-write verification, now exposed for bulk
+// historical queries too. Same chunked, additive-by-date-range model as
+// syncVouchers/syncVoucherItems.
+export async function syncVoucherLedgerEntries(from: string, to: string): Promise<string> {
+  await ensureSchema();
+
+  const xml = syncVoucherLedgerEntriesXml(toTallyActionDate(from), toTallyActionDate(to));
+  const result = await tallyRequest(xml);
+  const rows = extractRecords(result) as Record<string, unknown>[];
+
+  const fromIso = toIsoDate(from);
+  const toIso = toIsoDate(to);
+
+  let entryCount = 0;
+  await db.exec("BEGIN");
+  try {
+    await db.query(
+      "DELETE FROM voucher_ledger_entries WHERE date >= $1 AND date <= $2",
+      [fromIso, toIso]
+    );
+    for (const v of rows) {
+      const date = parseTallyDate(str(v.DATE) ?? "");
+      if (!date) continue;
+      const rawEntries = (v as any).ENTRY;
+      if (!rawEntries) continue;
+      const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
+      for (const entry of entries) {
+        const rawBills = entry.BILL;
+        const bills = rawBills ? (Array.isArray(rawBills) ? rawBills : [rawBills]) : [{}];
+        for (const bill of bills) {
+          entryCount++;
+          await db.query(
+            `INSERT INTO voucher_ledger_entries
+               (voucher_guid, date, voucher_type, voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              str(v.VOUCHER_GUID),
+              date,
+              str(v.VOUCHER_TYPE),
+              str(v.VOUCHER_NUMBER),
+              str(entry.LEDGER),
+              num(entry.AMOUNT),
+              entry.IS_DEEMED_POSITIVE === 1 || entry.IS_DEEMED_POSITIVE === "1",
+              str(entry.COST_CENTRE) || null,
+              str(bill.BILL_NAME) || null,
+              str(bill.BILL_TYPE) || null,
+            ]
+          );
+        }
+      }
+    }
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
+  }
+
+  return (
+    `Synced ${entryCount} ledger lines (across ${rows.length} vouchers checked) for ${from} to ${to} into this ` +
+    `session's SQL cache table 'voucher_ledger_entries' (cleared when this session ends). Query it directly to ` +
+    `see exactly which vouchers post to a given ledger and for how much — e.g. GROUP BY ledger, voucher_type to ` +
+    `split a combined ledger's balance apart, or filter by ledger to reconcile its movements voucher by voucher. ` +
+    `amount is SIGNED (negative for a debit line, positive for a credit line, confirmed live: a Sales invoice's ` +
+    `party ledger comes back negative while its Sales/VAT lines come back positive, summing to zero) — sum it ` +
+    `directly rather than combining with is_deemed_positive, which is kept only for cross-reference against ` +
+    `voucher_items' own use of that same field.`
   );
 }
 

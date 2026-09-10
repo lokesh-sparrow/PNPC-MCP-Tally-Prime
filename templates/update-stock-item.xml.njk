@@ -12,6 +12,17 @@
             {% if group %}<PARENT>{{ group }}</PARENT>{% endif %}
             {% if unit %}<BASEUNITS>{{ unit }}</BASEUNITS>{% endif %}
             {% if description %}<DESCRIPTION>{{ description }}</DESCRIPTION>{% endif %}
+            {% if partNumber %}<PARTNO>{{ partNumber }}</PARTNO>{% endif %}
+            {% if costingMethod %}<COSTINGMETHOD>{{ costingMethod }}</COSTINGMETHOD>{% endif %}
+            {% if gstTypeOfSupply %}<GSTTYPEOFSUPPLY>{{ gstTypeOfSupply }}</GSTTYPEOFSUPPLY>{% endif %}
+            {% if hsnCode or taxability or isReverseChargeApplicable is not undefined or gstIneligibleItc is not undefined %}<GSTDETAILS.LIST>
+              <APPLICABLEFROM>{{ gstDetailsApplicableFrom }}</APPLICABLEFROM>
+              <CALCULATIONTYPE>On Value</CALCULATIONTYPE>
+              {% if hsnCode %}<HSNCODE>{{ hsnCode }}</HSNCODE>{% endif %}
+              {% if taxability %}<TAXABILITY>{{ taxability }}</TAXABILITY>{% endif %}
+              {% if isReverseChargeApplicable is not undefined %}<ISREVERSECHARGEAPPLICABLE>{{ "Yes" if isReverseChargeApplicable else "No" }}</ISREVERSECHARGEAPPLICABLE>{% endif %}
+              {% if gstIneligibleItc is not undefined %}<GSTINELIGIBLEITC>{{ "Yes" if gstIneligibleItc else "No" }}</GSTINELIGIBLEITC>{% endif %}
+            </GSTDETAILS.LIST>{% endif %}
             {% if rateOfVat is not undefined %}<RATEOFVAT>{{ rateOfVat }}</RATEOFVAT>{% endif %}
             {% if ignoreNegativeStock is not undefined %}<IGNORENEGATIVESTOCK>{{ "Yes" if ignoreNegativeStock else "No" }}</IGNORENEGATIVESTOCK>{% endif %}
             {% for key, value in extraFields %}<{{ key }}>{{ value }}</{{ key }}>

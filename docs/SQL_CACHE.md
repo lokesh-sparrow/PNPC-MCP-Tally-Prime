@@ -39,6 +39,23 @@ set, verified against known ground truth). So: pull the line items with this
 tool, then do the actual analysis as a `query_sql` `SELECT` — there is no
 dedicated report tool for movement/ageing/godown, on purpose.
 
+`sync_voucher_ledger_entries_to_sql(from, to)` pulls voucher **ledger
+lines** (which ledger, amount, cost centre, bill allocation) — one row per
+ledger line per bill allocation — for one date range into the same cache,
+additive by date range like the others. This fills a different gap:
+`vouchers`/`sync_vouchers_to_sql` only carry each voucher's single overall
+total, with no way to see which ledgers it actually posted to. Whenever a
+ledger's balance needs to be broken apart by the vouchers that make it up —
+splitting a combined VAT ledger into Output vs Input, or reconciling a
+party ledger's movements voucher by voucher — this is the table to pull
+and query. It reuses the same TDL template (`voucher-ledger-entries.xml.njk`)
+already used internally to verify a single voucher right after a write, now
+exposed for bulk historical queries too. `amount` here is **signed**
+(negative for a debit line, positive for a credit line — confirmed live: a
+real Sales invoice's party-ledger line came back negative while its
+Sales/VAT lines came back positive, summing to zero across the voucher), so
+it sums directly with no sign-juggling needed.
+
 `query_sql` then runs an arbitrary read-only `SELECT` against that cache.
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
@@ -53,11 +70,12 @@ into context a second time.
 
 | Table | Columns | Populated by |
 |---|---|---|
-| `ledgers` | `name`, `parent`, `closing_balance`, `trn` | `sync_to_sql` (explicit) |
+| `ledgers` | `name`, `parent`, `closing_balance`, `trn`, `state`, `country` | `sync_to_sql` (explicit) |
 | `groups` | `name`, `parent` | `sync_to_sql` (explicit) |
 | `stock_items` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
 | `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` | `sync_vouchers_to_sql` (explicit) |
 | `voucher_items` | `voucher_guid`, `date`, `voucher_type`, `voucher_number`, `stock_item`, `qty`, `rate`, `amount`, `is_deemed_positive`, `godown`, `batch` | `sync_voucher_items_to_sql` (explicit) |
+| `voucher_ledger_entries` | `voucher_guid`, `date`, `voucher_type`, `voucher_number`, `ledger`, `amount`, `is_deemed_positive`, `cost_centre`, `bill_name`, `bill_type` | `sync_voucher_ledger_entries_to_sql` (explicit) |
 | `profit_and_loss` | `ledger_name`, `group_name`, `closing_balance`, `period_from`, `period_to` | `get_profit_and_loss` (automatic) |
 | `stock_summary` | `name`, `parent`, `opening_qty`, `closing_qty`, `opening_value`, `closing_value`, `as_of_date` | `get_stock_summary` (automatic) |
 | `balance_sheet` | `group_name`, `amount`, `as_of_date` | `get_balance_sheet` (automatic) |
@@ -118,6 +136,16 @@ get_trial_balance: from=01-01-2024 to=31-12-2024
 query_sql: SELECT SUM(debit_amount), SUM(credit_amount) FROM trial_balance
 ```
 
+Splitting a combined ledger's balance apart by the vouchers that make it
+up — e.g. a single "VAT 5%" ledger used for both sales (Output) and
+purchases (Input) — needs `voucher_ledger_entries`, not `vouchers`:
+
+```
+sync_voucher_ledger_entries_to_sql: from=01-01-2024 to=31-12-2024
+query_sql: SELECT voucher_type, SUM(amount) FROM voucher_ledger_entries
+           WHERE ledger = 'VAT 5%' GROUP BY voucher_type
+```
+
 ## Limitations
 
 - **In-memory and session-only — deliberately, not just as a limitation of
@@ -134,7 +162,9 @@ query_sql: SELECT SUM(debit_amount), SUM(credit_amount) FROM trial_balance
   way.
 - **`vouchers` only carries header-level detail.** No stock item or ledger
   line breakdown is cached there — use `get_vouchers` / `get_ledger_vouchers`
-  for that, or `sync_voucher_items_to_sql` for the inventory line items.
+  for that, `sync_voucher_items_to_sql` for the inventory line items, or
+  `sync_voucher_ledger_entries_to_sql` for the ledger lines (which ledger,
+  how much) inside each voucher.
 - **`qty`/`amount` in `voucher_items` are unsigned**, exactly as Tally stores
   them on the inventory entry — there is no single sign convention across
   voucher types. Use `is_deemed_positive` together with `voucher_type` to

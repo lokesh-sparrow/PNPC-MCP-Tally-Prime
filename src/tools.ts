@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL, CollectionField } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, syncVouchers, syncVoucherItems, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary, clearCache } from "./db.js";
+import { syncAll, syncVouchers, syncVoucherItems, syncVoucherLedgerEntries, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary, clearCache } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
 
@@ -16,8 +16,12 @@ export const tools = [
       "ledger, without pulling and scanning the entire ledger list yourself. Matches on exact/prefix/substring, " +
       "then falls back to a loose in-order character match for abbreviations and typos (e.g. 'vro' finds 'VRO " +
       "Technology'). Returns at most the top 20 matches, ranked best first; an empty result means create the " +
-      "ledger — nothing close enough exists yet. Each ledger includes VATTINNUMBER, STATE, and COUNTRY (the values " +
-      "set via create_ledger's trn/state/country fields, blank if never set) — check these before creating a " +
+      "ledger — nothing close enough exists yet. Each ledger includes VATTINNUMBER, VATDEALERTYPE, STATE, and " +
+      "COUNTRY (the values set via create_ledger's trn/vatDealerType/state/country fields, blank if never set), " +
+      "plus GSTIN, PAN, GSTREGISTRATIONTYPE, GSTTYPEOFSUPPLY, and CONTACTPERSON (set via create_ledger's " +
+      "gstin/pan/gstRegistrationType/gstTypeOfSupply/contactPerson fields — GSTIN/PAN/GSTREGISTRATIONTYPE are " +
+      "India's fields, distinct from trn/VATDEALERTYPE which are UAE-specific; a company only uses one country's " +
+      "set or the other, not both) — check the relevant ones before creating a " +
       "Sales/Purchase invoice (or Credit/Debit Note, Delivery/Receipt Note) for that party: Tally itself defaults " +
       "a new invoice's Buyer/Place-of-Supply details from the party ledger's own master data, so use these same " +
       "values for buyerTrn/buyerState/buyerCountry rather than leaving them blank or guessing. Only ask the user " +
@@ -38,7 +42,16 @@ export const tools = [
   },
   {
     name: "get_stock_items",
-    description: "Get all stock items from TallyPrime",
+    description:
+      "Get all stock items from TallyPrime. Each item includes NAME, PARENT, CLOSINGBALANCE, plus DESCRIPTION, " +
+      "PARTNUMBER, COSTINGMETHOD (e.g. 'Avg. Cost', 'FIFO'), GSTTYPEOFSUPPLY ('Goods'/'Services') — blank/empty " +
+      "if never set on that item — and GSTAPPLICABLE (read-only: Tally computes this from the item's own GST " +
+      "configuration, it cannot be set directly). Also includes GSTDETAILS: {hsnCode, taxability, applicableFrom, " +
+      "isReverseChargeApplicable, gstIneligibleItc} (or null if no GST Details entry exists at all), taken from " +
+      "Tally's own date-versioned GST Details list — set via create_stock_item's/update_stock_item's " +
+      "hsnCode/taxability/isReverseChargeApplicable/gstIneligibleItc fields. When an item has more than one dated " +
+      "entry (a rate/HSN change over time), this shows only the one with the latest applicableFrom, not the full " +
+      "history.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -386,6 +399,27 @@ export const tools = [
         website: { type: "string", description: "Website for this ledger." },
         phone: { type: "string", description: "Landline phone number for this ledger." },
         mobile: { type: "string", description: "Mobile number for this ledger." },
+        contactPerson: { type: "string", description: "Contact person's name for this ledger — distinct from the ledger/party name itself." },
+        gstin: {
+          type: "string",
+          description:
+            "India GSTIN (GST Identification Number) for this party ledger, e.g. '33BOUPA8950A1Z1'. This is India's equivalent of the UAE trn field, not an alias for it — set whichever applies to the company's country.",
+        },
+        pan: { type: "string", description: "India PAN (Permanent Account Number) for this party ledger, e.g. 'BOUPA8950A'." },
+        gstRegistrationType: {
+          type: "string",
+          description:
+            "India GST registration type for this party, e.g. 'Regular', 'Composition', 'Unregistered', 'Consumer'. Plain text matching Tally's own options — check an existing ledger or Tally's own dropdown if unsure of this company's exact wording.",
+        },
+        gstTypeOfSupply: {
+          type: "string",
+          description: "India GST type of supply for this ledger — 'Goods' or 'Services'. Confirmed live as a real, independently settable field.",
+        },
+        vatDealerType: {
+          type: "string",
+          description:
+            "UAE VAT dealer type for this party ledger, e.g. 'Regular', 'Unregistered'. This is UAE's equivalent of India's gstRegistrationType, not an alias for it — set whichever applies to the company's country.",
+        },
         billCreditPeriod: { type: "number", description: "Credit period in days for bill-wise settlement." },
         creditLimit: {
           type: "number",
@@ -2505,6 +2539,38 @@ export const tools = [
         openingBalance: { type: "number", description: "Opening quantity (optional, defaults to 0)" },
         openingRate: { type: "number", description: "Opening rate per unit (optional, defaults to 0)" },
         description: { type: "string", description: "Free-text description of the item." },
+        partNumber: { type: "string", description: "Part number for this item, e.g. a manufacturer's catalogue number." },
+        costingMethod: {
+          type: "string",
+          description:
+            "Stock valuation method for this item, e.g. 'Avg. Cost', 'FIFO', 'LIFO Perpetual', 'Std.Cost'. Plain text matching Tally's own dropdown options exactly.",
+        },
+        hsnCode: {
+          type: "string",
+          description:
+            "India HSN/SAC code for this item, e.g. '85071000'. Lives in Tally's own date-versioned GST Details list (confirmed live) — setting this or taxability writes a new GST Details entry effective from gstDetailsApplicableFrom.",
+        },
+        taxability: {
+          type: "string",
+          description: "India GST taxability for this item — 'Taxable', 'Exempt', or 'Nil Rated'. Same GST Details entry as hsnCode.",
+        },
+        gstDetailsApplicableFrom: {
+          type: "string",
+          description:
+            "Date in DD-MM-YYYY format from which this hsnCode/taxability entry is effective. Defaults to today if either field is set and this is omitted — required internally by Tally for the entry to persist (it's a date-versioned list).",
+        },
+        gstTypeOfSupply: {
+          type: "string",
+          description: "India GST type of supply for this item — 'Goods' or 'Services'. Confirmed live as a real, independently settable field (flat, not part of the GST Details list).",
+        },
+        isReverseChargeApplicable: {
+          type: "boolean",
+          description: "Whether reverse-charge GST applies to this item. Same date-versioned GST Details entry as hsnCode/taxability — setting this alone also creates/updates that entry.",
+        },
+        gstIneligibleItc: {
+          type: "boolean",
+          description: "Whether input tax credit on this item is ineligible under GST. Same date-versioned GST Details entry as hsnCode/taxability — setting this alone also creates/updates that entry.",
+        },
         rateOfVat: { type: "number", description: "VAT rate percentage for this item, e.g. 5." },
         ignoreNegativeStock: {
           type: "boolean",
@@ -2530,6 +2596,38 @@ export const tools = [
         group: { type: "string", description: "New stock group" },
         unit: { type: "string", description: "New unit of measure" },
         description: { type: "string", description: "Free-text description of the item." },
+        partNumber: { type: "string", description: "Part number for this item, e.g. a manufacturer's catalogue number." },
+        costingMethod: {
+          type: "string",
+          description:
+            "Stock valuation method for this item, e.g. 'Avg. Cost', 'FIFO', 'LIFO Perpetual', 'Std.Cost'. Plain text matching Tally's own dropdown options exactly.",
+        },
+        hsnCode: {
+          type: "string",
+          description:
+            "India HSN/SAC code for this item, e.g. '85071000'. Lives in Tally's own date-versioned GST Details list (confirmed live) — setting this or taxability writes a new GST Details entry effective from gstDetailsApplicableFrom.",
+        },
+        taxability: {
+          type: "string",
+          description: "India GST taxability for this item — 'Taxable', 'Exempt', or 'Nil Rated'. Same GST Details entry as hsnCode.",
+        },
+        gstDetailsApplicableFrom: {
+          type: "string",
+          description:
+            "Date in DD-MM-YYYY format from which this hsnCode/taxability entry is effective. Defaults to today if either field is set and this is omitted — required internally by Tally for the entry to persist (it's a date-versioned list).",
+        },
+        gstTypeOfSupply: {
+          type: "string",
+          description: "India GST type of supply for this item — 'Goods' or 'Services'. Confirmed live as a real, independently settable field (flat, not part of the GST Details list).",
+        },
+        isReverseChargeApplicable: {
+          type: "boolean",
+          description: "Whether reverse-charge GST applies to this item. Same date-versioned GST Details entry as hsnCode/taxability — setting this alone also creates/updates that entry.",
+        },
+        gstIneligibleItc: {
+          type: "boolean",
+          description: "Whether input tax credit on this item is ineligible under GST. Same date-versioned GST Details entry as hsnCode/taxability — setting this alone also creates/updates that entry.",
+        },
         rateOfVat: { type: "number", description: "VAT rate percentage for this item, e.g. 5." },
         ignoreNegativeStock: { type: "boolean", description: "Allow this item's stock to go negative without a warning/block." },
         extraFields: {
@@ -2700,8 +2798,8 @@ export const tools = [
       "per chunk to build up full multi-year history for the CURRENTLY OPEN company within this session — " +
       "re-running for the SAME range just refreshes it (safe to re-run), and each call only touches vouchers " +
       "within its own date range, so calling it for 2024 then 2025 gives you both, not just the latest. If you " +
-      "switch companies (set_company), sync again — the cache doesn't track which company a row came from, so " +
-      "don't query across a company switch without re-syncing first. IMPORTANT: pick a chunk size that won't " +
+      "switch companies (set_company), the cache is cleared automatically, so re-sync before querying again. " +
+      "IMPORTANT: pick a chunk size that won't " +
       "time out — a full year (~7,500 vouchers here) took ~6s against the 10s request timeout; prefer quarterly " +
       "or monthly chunks for a busy company, and back off further if a call times out. Does not include stock " +
       "item / ledger line detail (see get_ledger_vouchers/get_vouchers for that).",
@@ -2728,8 +2826,31 @@ export const tools = [
       "to work out inward vs outward direction. A voucher with no stock items (Payment, Journal, etc.) " +
       "contributes zero rows, not an empty one. Same chunked, additive-by-date-range model and same timeout " +
       "caution as sync_vouchers_to_sql — quarterly/monthly chunks for a busy company. If you switch companies " +
-      "(set_company), sync again — the cache doesn't track which company a row came from, so don't query across " +
-      "a company switch without re-syncing first.",
+      "(set_company), the cache is cleared automatically, so re-sync before querying again.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date in DD-MM-YYYY format" },
+        to: { type: "string", description: "End date in DD-MM-YYYY format" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "sync_voucher_ledger_entries_to_sql",
+    description:
+      "Pull voucher LEDGER LINES (which ledger each voucher posted to, the amount, cost centre, and bill " +
+      "allocation — one row per ledger line per bill allocation) for one date range into this session's SQL " +
+      "cache. This is the piece get_vouchers/sync_vouchers_to_sql can't give you — those return only each " +
+      "voucher's single overall total, not which ledgers it actually posted to and for how much. Use this " +
+      "whenever a ledger's balance needs to be broken down by the vouchers that make it up — e.g. a combined " +
+      "VAT ledger split into Output vs Input (GROUP BY ledger, voucher_type), or reconciling a party ledger's " +
+      "movements voucher by voucher. amount is SIGNED (negative for a debit line, positive for a credit line — " +
+      "confirmed live: a Sales invoice's party ledger line comes back negative while its Sales/VAT lines come " +
+      "back positive, summing to zero across the voucher) — sum it directly. Same chunked, additive-by-date-" +
+      "range model and same timeout caution as sync_vouchers_to_sql/sync_voucher_items_to_sql — quarterly/" +
+      "monthly chunks for a busy company. If you switch companies (set_company), the cache is cleared " +
+      "automatically, so re-sync before querying again.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2746,9 +2867,15 @@ export const tools = [
       "Tables: ledgers(name, parent, closing_balance, trn, state, country), groups(name, parent), stock_items(name, parent, " +
       "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration), " +
       "voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, " +
-      "is_deemed_positive, godown, batch) — all five populated only by explicitly calling " +
-      "sync_to_sql/sync_vouchers_to_sql/sync_voucher_items_to_sql first. Movement analysis, godown-wise stock, " +
-      "and batch/ageing detail are just SELECTs over voucher_items — there is no separate report tool for them. " +
+      "is_deemed_positive, godown, batch), voucher_ledger_entries(voucher_guid, date, voucher_type, " +
+      "voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type) — all six populated " +
+      "only by explicitly calling sync_to_sql/sync_vouchers_to_sql/sync_voucher_items_to_sql/" +
+      "sync_voucher_ledger_entries_to_sql first. Movement analysis, godown-wise stock, and batch/ageing detail " +
+      "are just SELECTs over voucher_items — there is no separate report tool for them. Splitting a ledger's " +
+      "balance apart by voucher (e.g. a combined VAT ledger into Output vs Input), or reconciling a party " +
+      "ledger's movements voucher by voucher, is just a SELECT over voucher_ledger_entries the same way — " +
+      "voucher_ledger_entries.amount is signed (negative debit, positive credit), so GROUP BY ledger, " +
+      "voucher_type with SUM(amount) is the natural query. " +
       "profit_and_loss(ledger_name, group_name, closing_balance, period_from, period_to), " +
       "stock_summary(name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date), " +
       "balance_sheet(group_name, amount, as_of_date), trial_balance(name, debit_amount, credit_amount, " +
@@ -2953,6 +3080,12 @@ function createLedgerXml(args: {
   website?: string;
   phone?: string;
   mobile?: string;
+  contactPerson?: string;
+  gstin?: string;
+  pan?: string;
+  gstRegistrationType?: string;
+  gstTypeOfSupply?: string;
+  vatDealerType?: string;
   billCreditPeriod?: number;
   creditLimit?: number;
   address?: string[];
@@ -4105,13 +4238,27 @@ function updateStockItemXml(args: {
   group?: string;
   unit?: string;
   description?: string;
+  partNumber?: string;
+  costingMethod?: string;
+  hsnCode?: string;
+  taxability?: string;
+  gstDetailsApplicableFrom?: string;
+  gstTypeOfSupply?: string;
+  isReverseChargeApplicable?: boolean;
+  gstIneligibleItc?: boolean;
   rateOfVat?: number;
   ignoreNegativeStock?: boolean;
   extraFields?: Record<string, string>;
 }): string {
+  const hasGstDetails = !!(args.hsnCode || args.taxability || args.isReverseChargeApplicable !== undefined || args.gstIneligibleItc !== undefined);
   return render("update-stock-item.xml.njk", {
     ...args,
     group: args.group ? normalizeParent(args.group) : undefined,
+    gstDetailsApplicableFrom: hasGstDetails
+      ? args.gstDetailsApplicableFrom
+        ? args.gstDetailsApplicableFrom.split("-").reverse().join("")
+        : todayTallyDate()
+      : undefined,
   });
 }
 
@@ -4200,12 +4347,24 @@ function createStockItemXml(args: {
   openingBalance: number;
   openingRate: number;
   description?: string;
+  partNumber?: string;
+  costingMethod?: string;
+  hsnCode?: string;
+  taxability?: string;
+  gstDetailsApplicableFrom?: string;
+  gstTypeOfSupply?: string;
+  isReverseChargeApplicable?: boolean;
+  gstIneligibleItc?: boolean;
   rateOfVat?: number;
   ignoreNegativeStock?: boolean;
   extraFields?: Record<string, string>;
 }): string {
-  const { name, group, unit, openingBalance, openingRate, description, rateOfVat, ignoreNegativeStock, extraFields } =
-    args;
+  const {
+    name, group, unit, openingBalance, openingRate, description, partNumber, costingMethod,
+    hsnCode, taxability, gstDetailsApplicableFrom, gstTypeOfSupply, isReverseChargeApplicable,
+    gstIneligibleItc, rateOfVat, ignoreNegativeStock, extraFields,
+  } = args;
+  const hasGstDetails = !!(hsnCode || taxability || isReverseChargeApplicable !== undefined || gstIneligibleItc !== undefined);
   return render("create-stock-item.xml.njk", {
     name,
     group: normalizeParent(group),
@@ -4214,6 +4373,18 @@ function createStockItemXml(args: {
     openingRate,
     openingValue: openingBalance * openingRate,
     description,
+    partNumber,
+    costingMethod,
+    hsnCode,
+    taxability,
+    gstDetailsApplicableFrom: hasGstDetails
+      ? gstDetailsApplicableFrom
+        ? gstDetailsApplicableFrom.split("-").reverse().join("")
+        : todayTallyDate()
+      : undefined,
+    gstTypeOfSupply,
+    isReverseChargeApplicable,
+    gstIneligibleItc,
     rateOfVat,
     ignoreNegativeStock,
     extraFields,
@@ -4296,6 +4467,12 @@ async function verifyLedgerWrite(name: string): Promise<string | null> {
       { name: "WEBSITE" },
       { name: "LEDGERPHONE" },
       { name: "LEDGERMOBILE" },
+      { name: "CONTACTPERSON", expression: 'if $$IsEmpty:$LedgerContact then "" else $LedgerContact' },
+      { name: "GSTIN", expression: 'if $$IsEmpty:$PartyGSTIN then "" else $PartyGSTIN' },
+      { name: "PAN", expression: 'if $$IsEmpty:$ITNumber then "" else $ITNumber' },
+      { name: "GSTREGISTRATIONTYPE", expression: 'if $$IsEmpty:$GSTRegistrationType then "" else $GSTRegistrationType' },
+      { name: "GSTTYPEOFSUPPLY", expression: 'if $$IsEmpty:$GSTTypeOfSupply then "" else $GSTTypeOfSupply' },
+      { name: "VATDEALERTYPE", expression: 'if $$IsEmpty:$VATDealerType then "" else $VATDealerType' },
       { name: "BILLCREDITPERIOD", datatype: "number" },
       { name: "CREDITLIMIT", datatype: "amount" },
       { name: "MAILINGNAME" },
@@ -4324,6 +4501,65 @@ async function verifyMasterWrite(collectionType: string, name: string, extraFiel
 
 // Every field create_stock_item/update_stock_item send (see
 // create-stock-item.xml.njk) — same 1:1 comparison intent as the ledger verify.
+// HSN code, Taxability, Reverse Charge Applicable, and GST Ineligible ITC live
+// in Tally's own date-versioned "GST Details" list on a Stock Item, not as
+// flat fields — a flat $HSNCode always returns empty even when the item
+// genuinely has one set (confirmed live against 1,039 real items on a real
+// India GST company; the working nested shape was confirmed live too:
+// $ApplicableFrom/$HSNCode/$Taxability/$IsReverseChargeApplicable/
+// $GSTIneligibleITC read from inside a GSTDetails EXPLODE). GST Applicable and
+// GST Type of Supply are different: both are genuinely flat Stock Item
+// fields (confirmed live), but GST Applicable is Tally-computed from the
+// item's own GST configuration rather than settable — writing it has no
+// effect, so it's surfaced read-only elsewhere, never through this helper.
+// filterExpression narrows to one item; omit it to fetch every item's GST
+// Details in bulk.
+function parseTallyGstDate(s: string): number {
+  const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(s.trim());
+  if (!m) return 0;
+  const day = parseInt(m[1], 10);
+  const monthIdx = MONTH_ABBR.findIndex((abbr) => abbr.toLowerCase() === m[2].toLowerCase());
+  if (monthIdx < 0) return 0;
+  const year = m[3].length === 2 ? 2000 + parseInt(m[3], 10) : parseInt(m[3], 10);
+  return new Date(year, monthIdx, day).getTime();
+}
+
+type StockItemGstDetails = {
+  hsnCode: string;
+  taxability: string;
+  applicableFrom: string;
+  isReverseChargeApplicable: boolean;
+  gstIneligibleItc: boolean;
+};
+
+async function fetchStockItemGstDetails(filterExpression?: string): Promise<Map<string, StockItemGstDetails>> {
+  const xml = render("stock-item-gst-details.xml.njk", { filterExpression });
+  const rows = extractRecords(await tallyRequest(xml)) as { NAME?: string; GST?: unknown }[];
+  const result = new Map<string, StockItemGstDetails>();
+  for (const row of rows) {
+    if (!row.NAME || !row.GST) continue;
+    const entries = (Array.isArray(row.GST) ? row.GST : [row.GST]) as Record<string, unknown>[];
+    let latest: Record<string, unknown> | null = null;
+    for (const entry of entries) {
+      const entryDate = parseTallyGstDate(String(entry.APPLICABLEFROM ?? ""));
+      const latestDate = latest ? parseTallyGstDate(String(latest.APPLICABLEFROM ?? "")) : -1;
+      if (entryDate >= latestDate) latest = entry;
+    }
+    if (latest) {
+      result.set(String(row.NAME), {
+        hsnCode: String(latest.HSNCODE ?? ""),
+        taxability: String(latest.TAXABILITY ?? ""),
+        applicableFrom: String(latest.APPLICABLEFROM ?? ""),
+        // Tally's TDL boolean SET renders "Yes" for true and blank for false
+        // (confirmed live) — not "No" — so presence of the string is the test.
+        isReverseChargeApplicable: String(latest.ISREVERSECHARGEAPPLICABLE ?? "").trim() === "Yes",
+        gstIneligibleItc: String(latest.GSTINELIGIBLEITC ?? "").trim() === "Yes",
+      });
+    }
+  }
+  return result;
+}
+
 async function verifyStockItemWrite(name: string): Promise<string | null> {
   const xml = buildCollectionXml(
     "Stock Item",
@@ -4335,14 +4571,20 @@ async function verifyStockItemWrite(name: string): Promise<string | null> {
       { name: "OPENINGRATE", datatype: "rate" },
       { name: "CLOSINGBALANCE", datatype: "quantity" },
       { name: "DESCRIPTION" },
+      { name: "PARTNUMBER", expression: 'if $$IsEmpty:$PartNo then "" else $PartNo' },
+      { name: "COSTINGMETHOD", expression: 'if $$IsEmpty:$CostingMethod then "" else $CostingMethod' },
+      { name: "GSTTYPEOFSUPPLY", expression: 'if $$IsEmpty:$GSTTypeOfSupply then "" else $GSTTypeOfSupply' },
       { name: "RATEOFVAT", datatype: "rate" },
       { name: "IGNORENEGATIVESTOCK" },
     ],
     [{ name: "FilterName", expression: `$$IsEqual:$Name:"${name}"` }]
   );
-  const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+  const [rows, gstDetails] = await Promise.all([
+    tallyRequest(xml).then((r) => extractRecords(r) as Record<string, unknown>[]),
+    fetchStockItemGstDetails(`$$IsEqual:$Name:"${name}"`),
+  ]);
   if (rows.length === 0) return `not found in Tally under "${name}" after the write — re-check the name.`;
-  return JSON.stringify(rows[0]);
+  return JSON.stringify({ ...rows[0], GSTDETAILS: gstDetails.get(name) ?? null });
 }
 
 // delete_master takes Tally's XML tag name for the master type (e.g.
@@ -4547,13 +4789,13 @@ async function buildWriteXml(toolName: string, args: Record<string, unknown>): P
     case "create_ledger": {
       const {
         name: ledgerName, oldName, parent, openingBalance, maintainBillWise, trn, email, website, phone,
-        mobile, billCreditPeriod, creditLimit, address, state, country, pincode, mailingName,
-        addressApplicableFrom, extraFields,
+        mobile, contactPerson, gstin, pan, gstRegistrationType, gstTypeOfSupply, vatDealerType, billCreditPeriod,
+        creditLimit, address, state, country, pincode, mailingName, addressApplicableFrom, extraFields,
       } = a;
       return createLedgerXml({
         name: ledgerName, parent, openingBalance: openingBalance ?? 0, oldName, maintainBillWise, trn, email,
-        website, phone, mobile, billCreditPeriod, creditLimit, address, state, country, pincode, mailingName,
-        addressApplicableFrom, extraFields,
+        website, phone, mobile, contactPerson, gstin, pan, gstRegistrationType, gstTypeOfSupply, vatDealerType,
+        billCreditPeriod, creditLimit, address, state, country, pincode, mailingName, addressApplicableFrom, extraFields,
       });
     }
     case "delete_master":
@@ -4662,8 +4904,11 @@ async function buildWriteXml(toolName: string, args: Record<string, unknown>): P
     case "create_stock_item":
       return createStockItemXml({
         name: a.name, group: a.group, unit: a.unit, openingBalance: a.openingBalance ?? 0,
-        openingRate: a.openingRate ?? 0, description: a.description, rateOfVat: a.rateOfVat,
-        ignoreNegativeStock: a.ignoreNegativeStock, extraFields: a.extraFields,
+        openingRate: a.openingRate ?? 0, description: a.description, partNumber: a.partNumber,
+        costingMethod: a.costingMethod, hsnCode: a.hsnCode, taxability: a.taxability,
+        gstDetailsApplicableFrom: a.gstDetailsApplicableFrom, gstTypeOfSupply: a.gstTypeOfSupply,
+        isReverseChargeApplicable: a.isReverseChargeApplicable, gstIneligibleItc: a.gstIneligibleItc,
+        rateOfVat: a.rateOfVat, ignoreNegativeStock: a.ignoreNegativeStock, extraFields: a.extraFields,
       });
     case "update_stock_item":
       return updateStockItemXml(a);
@@ -4703,6 +4948,12 @@ export async function handleTool(
         { name: "VATTINNUMBER" },
         { name: "STATE", expression: "$LedStateName" },
         { name: "COUNTRY", expression: "$CountryName" },
+        { name: "GSTIN", expression: 'if $$IsEmpty:$PartyGSTIN then "" else $PartyGSTIN' },
+        { name: "PAN", expression: 'if $$IsEmpty:$ITNumber then "" else $ITNumber' },
+        { name: "GSTREGISTRATIONTYPE", expression: 'if $$IsEmpty:$GSTRegistrationType then "" else $GSTRegistrationType' },
+        { name: "GSTTYPEOFSUPPLY", expression: 'if $$IsEmpty:$GSTTypeOfSupply then "" else $GSTTypeOfSupply' },
+        { name: "VATDEALERTYPE", expression: 'if $$IsEmpty:$VATDealerType then "" else $VATDealerType' },
+        { name: "CONTACTPERSON", expression: 'if $$IsEmpty:$LedgerContact then "" else $LedgerContact' },
       ]);
       const result = await tallyRequest(xml);
       if (!query) {
@@ -4726,9 +4977,22 @@ export async function handleTool(
         { name: "NAME" },
         { name: "PARENT" },
         { name: "CLOSINGBALANCE", datatype: "quantity" },
+        { name: "DESCRIPTION", expression: 'if $$IsEmpty:$Description then "" else $Description' },
+        { name: "PARTNUMBER", expression: 'if $$IsEmpty:$PartNo then "" else $PartNo' },
+        { name: "COSTINGMETHOD", expression: 'if $$IsEmpty:$CostingMethod then "" else $CostingMethod' },
+        { name: "GSTTYPEOFSUPPLY", expression: 'if $$IsEmpty:$GSTTypeOfSupply then "" else $GSTTypeOfSupply' },
+        // Read-only: Tally computes this from the item's own GST configuration
+        // rather than accepting it as a direct write (confirmed live — writing
+        // it via create/update_stock_item has no effect), so it's exposed here
+        // for visibility only, never as a settable field.
+        { name: "GSTAPPLICABLE", expression: 'if $$IsEmpty:$GSTApplicable then "" else $GSTApplicable' },
       ]);
-      const result = await tallyRequest(xml);
-      return JSON.stringify(cleanTallyResult(result), null, 2);
+      const [rows, gstDetails] = await Promise.all([
+        tallyRequest(xml).then((r) => extractRecords(r) as Record<string, unknown>[]),
+        fetchStockItemGstDetails(),
+      ]);
+      const merged = rows.map((row) => ({ ...row, GSTDETAILS: gstDetails.get(String(row.NAME)) ?? null }));
+      return JSON.stringify({ DATA: { ROW: merged } }, null, 2);
     }
 
     case "get_vouchers": {
@@ -5149,6 +5413,12 @@ export async function handleTool(
         website,
         phone,
         mobile,
+        contactPerson,
+        gstin,
+        pan,
+        gstRegistrationType,
+        gstTypeOfSupply,
+        vatDealerType,
         billCreditPeriod,
         creditLimit,
         address,
@@ -5169,6 +5439,12 @@ export async function handleTool(
         website?: string;
         phone?: string;
         mobile?: string;
+        contactPerson?: string;
+        gstin?: string;
+        pan?: string;
+        gstRegistrationType?: string;
+        gstTypeOfSupply?: string;
+        vatDealerType?: string;
         billCreditPeriod?: number;
         creditLimit?: number;
         address?: string[];
@@ -5190,6 +5466,12 @@ export async function handleTool(
         website,
         phone,
         mobile,
+        contactPerson,
+        gstin,
+        pan,
+        gstRegistrationType,
+        gstTypeOfSupply,
+        vatDealerType,
         billCreditPeriod,
         creditLimit,
         address,
@@ -5639,6 +5921,14 @@ export async function handleTool(
         openingBalance,
         openingRate,
         description,
+        partNumber,
+        costingMethod,
+        hsnCode,
+        taxability,
+        gstDetailsApplicableFrom,
+        gstTypeOfSupply,
+        isReverseChargeApplicable,
+        gstIneligibleItc,
         rateOfVat,
         ignoreNegativeStock,
         extraFields,
@@ -5649,6 +5939,14 @@ export async function handleTool(
         openingBalance?: number;
         openingRate?: number;
         description?: string;
+        partNumber?: string;
+        costingMethod?: string;
+        hsnCode?: string;
+        taxability?: string;
+        gstDetailsApplicableFrom?: string;
+        gstTypeOfSupply?: string;
+        isReverseChargeApplicable?: boolean;
+        gstIneligibleItc?: boolean;
         rateOfVat?: number;
         ignoreNegativeStock?: boolean;
         extraFields?: Record<string, string>;
@@ -5660,6 +5958,14 @@ export async function handleTool(
         openingBalance: openingBalance ?? 0,
         openingRate: openingRate ?? 0,
         description,
+        partNumber,
+        costingMethod,
+        hsnCode,
+        taxability,
+        gstDetailsApplicableFrom,
+        gstTypeOfSupply,
+        isReverseChargeApplicable,
+        gstIneligibleItc,
         rateOfVat,
         ignoreNegativeStock,
         extraFields,
@@ -5674,6 +5980,14 @@ export async function handleTool(
         group?: string;
         unit?: string;
         description?: string;
+        partNumber?: string;
+        costingMethod?: string;
+        hsnCode?: string;
+        taxability?: string;
+        gstDetailsApplicableFrom?: string;
+        gstTypeOfSupply?: string;
+        isReverseChargeApplicable?: boolean;
+        gstIneligibleItc?: boolean;
         rateOfVat?: number;
         ignoreNegativeStock?: boolean;
         extraFields?: Record<string, string>;
@@ -5776,6 +6090,11 @@ export async function handleTool(
     case "sync_voucher_items_to_sql": {
       const { from, to } = args as { from: string; to: string };
       return await syncVoucherItems(from, to);
+    }
+
+    case "sync_voucher_ledger_entries_to_sql": {
+      const { from, to } = args as { from: string; to: string };
+      return await syncVoucherLedgerEntries(from, to);
     }
 
     case "query_sql": {

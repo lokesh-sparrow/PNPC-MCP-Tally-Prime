@@ -1,0 +1,56 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>PNPCMCPStockItemGstDetails</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="PNPCMCPStockItemGstDetails">
+            <FORMS>PNPCMCPStockItemGstDetailsForm</FORMS>
+          </REPORT>
+          <FORM NAME="PNPCMCPStockItemGstDetailsForm">
+            <PARTS>PNPCMCPStockItemGstDetailsPart</PARTS>
+            <XMLTAG>DATA</XMLTAG>
+          </FORM>
+          <PART NAME="PNPCMCPStockItemGstDetailsPart">
+            <LINES>PNPCMCPStockItemGstDetailsLine</LINES>
+            <REPEAT>PNPCMCPStockItemGstDetailsLine : PNPCMCPStockItemGstDetailsCollection</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPStockItemGstDetailsLine">
+            <FIELDS>FldName</FIELDS>
+            <EXPLODE>PNPCMCPGstPart</EXPLODE>
+            <XMLTAG>ROW</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldName"><SET>$Name</SET><XMLTAG>NAME</XMLTAG></FIELD>
+          <PART NAME="PNPCMCPGstPart">
+            <LINES>PNPCMCPGstLine</LINES>
+            <REPEAT>PNPCMCPGstLine : GSTDetails</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="PNPCMCPGstLine">
+            <FIELDS>FldApplicableFrom,FldHsn,FldTaxability,FldReverseCharge,FldIneligibleItc</FIELDS>
+            <XMLTAG>GST</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldApplicableFrom"><SET>if $$IsEmpty:$ApplicableFrom then "" else $ApplicableFrom</SET><XMLTAG>APPLICABLEFROM</XMLTAG></FIELD>
+          <FIELD NAME="FldHsn"><SET>if $$IsEmpty:$HSNCode then "" else $HSNCode</SET><XMLTAG>HSNCODE</XMLTAG></FIELD>
+          <FIELD NAME="FldTaxability"><SET>if $$IsEmpty:$Taxability then "" else $Taxability</SET><XMLTAG>TAXABILITY</XMLTAG></FIELD>
+          <FIELD NAME="FldReverseCharge"><SET>$IsReverseChargeApplicable</SET><XMLTAG>ISREVERSECHARGEAPPLICABLE</XMLTAG></FIELD>
+          <FIELD NAME="FldIneligibleItc"><SET>$GSTIneligibleITC</SET><XMLTAG>GSTINELIGIBLEITC</XMLTAG></FIELD>
+          <COLLECTION NAME="PNPCMCPStockItemGstDetailsCollection">
+            <TYPE>Stock Item</TYPE>
+            {% if filterExpression %}<FILTER>PNPCMCPGstFilter</FILTER>{% endif %}
+          </COLLECTION>
+          {% if filterExpression %}<SYSTEM TYPE="Formulae" NAME="PNPCMCPGstFilter">{{ filterExpression }}</SYSTEM>{% endif %}
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

@@ -114,7 +114,7 @@ exposing it without opening a router port, and
 [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) for the OAuth login
 flow itself.
 
-## Available tools (85 total)
+## Available tools (86 total)
 
 You don't call these directly — just describe what you want in chat and Claude
 picks the right one. For a plain-English example prompt per tool, grouped by
@@ -128,8 +128,8 @@ machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 | Tool | Input | Output |
 |---|---|---|
-| `get_ledgers` | `query?` | All ledgers (including VAT TRN), or (with `query`) a fuzzy-ranked shortlist of the closest-matching ledger names — top 20, best match first |
-| `get_stock_items` | — | All stock items |
+| `get_ledgers` | `query?` | All ledgers (including VAT TRN, VAT dealer type, state, country, GSTIN, PAN, GST registration type, GST type of supply, contact person), or (with `query`) a fuzzy-ranked shortlist of the closest-matching ledger names — top 20, best match first. GSTIN/PAN/GST registration type/GST type of supply are India's tax fields, `trn`/VAT dealer type are UAE's — a ledger normally has one country's set or the other |
+| `get_stock_items` | — | All stock items (name, parent, closing balance, description, part number, costing method, GST type of supply, GST applicable (read-only), plus `GSTDETAILS: {hsnCode, taxability, applicableFrom, isReverseChargeApplicable, gstIneligibleItc}` or `null`) — the latest dated GST Details entry from Tally's own date-versioned list, set via `create_stock_item`'s/`update_stock_item`'s `hsnCode`/`taxability`/`isReverseChargeApplicable`/`gstIneligibleItc` fields |
 | `get_groups` | — | Account groups (e.g. Sundry Debtors, Fixed Assets) |
 | `get_voucher_types` | — | Configured voucher types (Payment, Sales, Journal, ...) |
 | `get_cost_centres` | — | All cost centres |
@@ -215,11 +215,11 @@ just whether Tally accepted the request. See
 
 | Tool | Input | Output |
 |---|---|---|
-| `create_ledger` | `name`, `oldName?`, `parent`, `openingBalance?`, `maintainBillWise?`, `trn?`, `email?`, `website?`, `phone?`, `mobile?`, `billCreditPeriod?`, `creditLimit?`, `address?`, `state?`, `country?`, `pincode?`, `mailingName?`, `addressApplicableFrom?`, `extraFields?` | Creates a ledger under the given group — or, if `oldName` is passed, alters/renames that existing ledger instead. `extraFields` is an escape hatch for any other native Tally ledger field by exact tag name |
+| `create_ledger` | `name`, `oldName?`, `parent`, `openingBalance?`, `maintainBillWise?`, `trn?`, `email?`, `website?`, `phone?`, `mobile?`, `contactPerson?`, `gstin?`, `pan?`, `gstRegistrationType?`, `gstTypeOfSupply?`, `vatDealerType?`, `billCreditPeriod?`, `creditLimit?`, `address?`, `state?`, `country?`, `pincode?`, `mailingName?`, `addressApplicableFrom?`, `extraFields?` | Creates a ledger under the given group — or, if `oldName` is passed, alters/renames that existing ledger instead. `gstin`/`pan`/`gstRegistrationType`/`gstTypeOfSupply` are India's tax fields, distinct from `trn`/`vatDealerType` (UAE). `extraFields` is an escape hatch for any other native Tally ledger field by exact tag name |
 | `create_group` | `name`, `oldName?`, `parent` | Creates an account group nested under a parent — or renames/reparents an existing one if `oldName` is passed |
 | `create_stock_group` | `name`, `parent` | Creates a Stock Group (the category `create_stock_item`'s `group` field references) — distinct from `create_group`'s account groups |
-| `create_stock_item` | `name`, `group`, `unit`, `openingBalance?`, `openingRate?`, `description?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Creates a stock item. `extraFields` is an escape hatch for any other native field by exact tag name |
-| `update_stock_item` | `name`, `group?`, `unit?`, `description?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Updates any subset of an existing stock item's fields — same coverage as `create_stock_item`, all optional except `name` |
+| `create_stock_item` | `name`, `group`, `unit`, `openingBalance?`, `openingRate?`, `description?`, `partNumber?`, `costingMethod?`, `hsnCode?`, `taxability?`, `gstDetailsApplicableFrom?`, `gstTypeOfSupply?`, `isReverseChargeApplicable?`, `gstIneligibleItc?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Creates a stock item. `hsnCode`/`taxability`/`isReverseChargeApplicable`/`gstIneligibleItc` write to Tally's date-versioned GST Details list; `gstTypeOfSupply` is a separate flat field. `extraFields` is an escape hatch for any other native field by exact tag name |
+| `update_stock_item` | `name`, `group?`, `unit?`, `description?`, `partNumber?`, `costingMethod?`, `hsnCode?`, `taxability?`, `gstDetailsApplicableFrom?`, `gstTypeOfSupply?`, `isReverseChargeApplicable?`, `gstIneligibleItc?`, `rateOfVat?`, `ignoreNegativeStock?`, `extraFields?` | Updates any subset of an existing stock item's fields — same coverage as `create_stock_item`, all optional except `name` |
 | `delete_stock_item` | `name` | Deletes a stock item (fails if it has transactions posted) |
 | `create_unit` | `symbol`, `formalName?`, `decimalPlaces?` **or** `baseUnit`+`additionalUnit`+`conversion` for a compound unit | Creates a Unit of Measure — simple (e.g. `'Kg'`) by default, or compound (e.g. `'Box of 12 Nos'`) when `baseUnit` is passed. Both simple units must already exist before creating the compound unit that references them — required before using a unit that doesn't exist yet |
 | `set_bill_of_materials` | `stockItem`, `componentListName?`, `basicQty?`, `unit?`, `components` (array of `stockItem`, `qty`, `unit`, `natureOfItem?`, `godown?`) | Attaches a recipe to an existing finished-goods stock item. Pure convenience layer over `create_stock_journal` — doesn't move stock or post anything itself. Verified live: attaches without error and causes no stock movement on its own. `natureOfItem`'s four values (`Component`/`Co-Product`/`By-Product`/`Scrap`) were each checked against Tally's own BoM screen — all map to the matching "Type of Item" label |
@@ -259,7 +259,8 @@ just whether Tally accepted the request. See
 | `sync_to_sql` | — | Pulls ledgers, groups, and stock items into a **session-only, in-memory** SQL cache |
 | `sync_vouchers_to_sql` | `from`, `to` | Pulls voucher headers (date, type, number, party, amount, narration — not line items) for one date range into the same cache. Call it once per chunk (e.g. per quarter) to build up full multi-year history within a session — each call only replaces vouchers in its own date range, so calling it for 2024 then 2025 gives you both |
 | `sync_voucher_items_to_sql` | `from`, `to` | Pulls voucher **inventory line items** (stock item, qty, rate, amount, godown, batch — one row per item per batch allocation) for one date range into the same cache. This is the raw data for movement analysis, godown-wise stock, and batch detail — there's no separate report tool for those, it's a `query_sql` SELECT over this table. `qty`/`amount` are unsigned as Tally stores them; use `is_deemed_positive` with `voucher_type` to work out inward vs outward |
-| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance, trn)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)`, `voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, is_deemed_positive, godown, batch)` |
+| `sync_voucher_ledger_entries_to_sql` | `from`, `to` | Pulls voucher **ledger lines** (which ledger, amount, cost centre, bill allocation — one row per ledger line per bill allocation) for one date range into the same cache. This is what fills the gap voucher totals alone can't: splitting a combined ledger's balance apart by voucher (e.g. VAT into Output vs Input), or reconciling a party ledger's movements voucher by voucher. `amount` is signed — negative for a debit line, positive for a credit line — so it sums directly |
+| `query_sql` | `sql` (SELECT only) | Runs a read-only query against that cache — tables: `ledgers(name, parent, closing_balance, trn, state, country)`, `groups(name, parent)`, `stock_items(name, parent, closing_balance)`, `vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration)`, `voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, is_deemed_positive, godown, batch)`, `voucher_ledger_entries(voucher_guid, date, voucher_type, voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type)` |
 
 `get_profit_and_loss`, `get_stock_summary`, `get_balance_sheet`,
 `get_trial_balance`, `get_vat_liability_summary`, and

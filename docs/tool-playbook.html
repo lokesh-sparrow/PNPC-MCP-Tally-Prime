@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tally Connector Playbook</title>
-<meta name="description" content="Plain-English example prompts for all 85 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
+<meta name="description" content="Plain-English example prompts for all 86 tools in the PNPC-MCP-Tally-Prime connector, organized by category, for use in Claude Desktop chat.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -353,15 +353,15 @@
     <p class="eyebrow"><a href="https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime#readme">PNPC-MCP-Tally-Prime</a> · Claude Desktop chat</p>
     <h1>The Tally Connector Playbook</h1>
     <p class="lede">
-      Every one of the 85 tools this connector gives Claude, with a plain-English
+      Every one of the 86 tools this connector gives Claude, with a plain-English
       example of the sentence you'd actually type in a Claude Desktop chat to use it.
       Nothing here is a command syntax — Claude reads your request and picks the
       right tool itself.
     </p>
     <div class="stat-row">
-      <div class="stat"><span class="n">85</span><span class="label">tools total</span></div>
+      <div class="stat"><span class="n">86</span><span class="label">tools total</span></div>
       <div class="stat"><span class="n">7</span><span class="label">categories</span></div>
-      <div class="stat"><span class="n">v1.11.2</span><span class="label">current release</span></div>
+      <div class="stat"><span class="n">v1.12.0</span><span class="label">current release</span></div>
     </div>
   </header>
 
@@ -521,6 +521,7 @@
         ["sync_to_sql", "Loads ledgers, groups, and stock items into an in-memory cache for this session.", "Sync ledgers and stock items into the SQL cache"],
         ["sync_vouchers_to_sql", "Loads voucher headers for a date range into the cache.", "Sync all vouchers from January to March 2024 into the cache"],
         ["sync_voucher_items_to_sql", "Loads voucher inventory line items (item, qty, rate, godown, batch) for a date range into the cache.", "Sync the stock movement for 2024 into the cache, then tell me which godown holds the most stock"],
+        ["sync_voucher_ledger_entries_to_sql", "Loads voucher ledger lines (which ledger, amount, cost centre, bill allocation) for a date range into the cache — the piece voucher totals alone can't show.", "Sync the ledger entries for 2024 into the cache, then split VAT 5%'s balance into Output and Input by voucher type"],
         ["query_sql", "Runs a read-only SQL query against whatever's been synced.", "Which 10 customers owe us the most, based on what's synced?"]
       ]
     }

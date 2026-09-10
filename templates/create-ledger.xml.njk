@@ -21,6 +21,12 @@
             {% if website %}<WEBSITE>{{ website }}</WEBSITE>{% endif %}
             {% if phone %}<LEDGERPHONE>{{ phone }}</LEDGERPHONE>{% endif %}
             {% if mobile %}<LEDGERMOBILE>{{ mobile }}</LEDGERMOBILE>{% endif %}
+            {% if contactPerson %}<LEDGERCONTACT>{{ contactPerson }}</LEDGERCONTACT>{% endif %}
+            {% if gstin %}<PARTYGSTIN>{{ gstin }}</PARTYGSTIN>{% endif %}
+            {% if pan %}<PANNUMBER>{{ pan }}</PANNUMBER>{% endif %}
+            {% if gstRegistrationType %}<GSTREGISTRATIONTYPE>{{ gstRegistrationType }}</GSTREGISTRATIONTYPE>{% endif %}
+            {% if gstTypeOfSupply %}<GSTTYPEOFSUPPLY>{{ gstTypeOfSupply }}</GSTTYPEOFSUPPLY>{% endif %}
+            {% if vatDealerType %}<VATDEALERTYPE>{{ vatDealerType }}</VATDEALERTYPE>{% endif %}
             {% if billCreditPeriod is not undefined %}<BILLCREDITPERIOD>{{ billCreditPeriod }}</BILLCREDITPERIOD>{% endif %}
             {% if creditLimit is not undefined %}<CREDITLIMIT>{{ creditLimit }}</CREDITLIMIT><OVERRIDECREDITLIMIT>Yes</OVERRIDECREDITLIMIT>{% endif %}
             {% if address or state or country or pincode or mailingName %}<LEDMAILINGDETAILS.LIST>
