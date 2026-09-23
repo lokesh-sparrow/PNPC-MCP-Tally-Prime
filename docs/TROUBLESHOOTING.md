@@ -335,13 +335,36 @@ change and confirm the fresh `previewId` promptly.
 
 - The cache is **in-memory and session-scoped only** — gone as soon as the
   server process exits, no disk persistence.
-- It doesn't track which company a cached row came from. If you switch
-  companies via `set_company`, re-sync before querying again — don't run
-  `query_sql` against a cache that spans a company switch.
 - `sync_vouchers_to_sql` only pulls headers (date, type, number, party,
   amount, narration) — no line items. For a busy company, sync in chunks
   (quarterly/monthly) rather than a full year at once, to stay under the
   10s request timeout.
+
+### A company switch outside `set_company` used to poison the cache silently (fixed as of v1.12.1)
+No cached row ever recorded which Tally company it came from — the cache
+only got cleared when the switch went through this connector's own
+`set_company`. Changing the active company **in Tally's UI directly**, or a
+connector restart/update resetting which company Tally reopens on, went
+unnoticed: the next `sync_*_to_sql` call loaded the new (unnoticed) company's
+data into the same tables as if nothing had changed.
+
+**Confirmed live** on 2026-09-11: a connector update left Tally on
+"Classic Catering LLC (2020)" while work was mid-way through Milan Plus
+Equestrian Equipment LLC. Four `sync_voucher_ledger_entries_to_sql` calls
+loaded ~19,500 Classic Catering rows that looked like entirely plausible
+Milan Plus data — only a `get_company_info` check caught it, after the
+fact, by chance.
+
+Fixed by having every sync/query tool ask Tally which company is actually
+open right before touching the cache, and compare that against what the
+cache was last synced/queried for — regardless of how the active company
+got to be what it is. A mismatch clears the whole cache first: `sync_*_to_sql`
+then proceeds with the fresh sync for the now-current company and says so
+in its return message ("Tally's active company changed since the last
+sync..."); `query_sql` refuses to run at all rather than silently
+answering from a now-empty, wrong-company cache. You no longer need to
+remember to re-sync after a company switch — the tools themselves catch it
+either way.
 
 ### A port responds but isn't actually TallyPrime's gateway
 **Tally's own license server (commonly port 9999) answers

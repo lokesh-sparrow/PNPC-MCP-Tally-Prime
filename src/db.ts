@@ -168,6 +168,71 @@ export async function clearCache(): Promise<void> {
   `);
 }
 
+// Tracks which Tally company the cache currently holds data for — updated at
+// every successful cache write via ensureCacheCompanyMatch below, null until
+// the first one this session. Not a DB column because nothing here needs to
+// survive a session restart; a module variable is enough to compare against.
+let cachedCompanyName: string | null = null;
+
+// Told explicitly by set_company right after it clears the cache, so this
+// module's own notion of "which company the cache is for" doesn't lag a call
+// behind — harmless either way (the next sync/query below would self-correct
+// at the cost of one redundant TRUNCATE on an already-empty cache), but this
+// keeps the two in sync immediately instead of on the next opportunistic
+// check.
+export function setKnownCompany(name: string): void {
+  cachedCompanyName = name;
+}
+
+// Tally's gateway has no notion of "who is asking" or "what did the
+// connector expect" — it just answers with whatever company is currently
+// open, however it got switched there (this tool's own set_company, Tally's
+// UI directly, or a connector restart resetting which company Tally reopens
+// on). Re-asks Tally what's actually open right now, the same way
+// set_company's own post-switch check does.
+async function getActiveCompanyName(): Promise<string | null> {
+  const xml = buildCollectionXml(
+    "Company",
+    [{ name: "NAME" }],
+    [{ name: "OnlyCurrent", expression: "$$IsEqual:$Name:##SVCurrentCompany" }]
+  );
+  const rows = extractRecords(await tallyRequest(xml)) as { NAME?: string }[];
+  return rows[0]?.NAME ? String(rows[0].NAME) : null;
+}
+
+// Every cache write and read is gated through this. Detects a company
+// change since the last cache write — regardless of how the switch
+// happened — and truncates the now-mismatched cache before it can be read
+// as if it still belonged to the new company.
+//
+// Hit live on 2026-09-11: a connector update left Tally on "Classic
+// Catering LLC (2020)" mid-way through work on Milan Plus Equestrian
+// Equipment LLC, and four sync_voucher_ledger_entries_to_sql calls silently
+// loaded ~19,500 Classic Catering rows that looked like plausible Milan
+// Plus data — only caught by a manual get_company_info check. Wrong-company
+// data that looks plausible is worse than an error, since it produces
+// confident, wrong client tax figures. This makes that check automatic on
+// every cache write/read instead of something a human has to remember, and
+// every sync's own return message now names the company it actually synced
+// so the mismatch is visible without a separate check.
+async function ensureCacheCompanyMatch(): Promise<{ companyName: string; wasCleared: boolean; previousCompany: string | null }> {
+  await ensureSchema();
+  const actual = await getActiveCompanyName();
+  if (!actual) {
+    throw new Error(
+      "Could not determine which company is currently open in Tally — refusing to sync or query the cache " +
+        "until this is resolved (check get_health_check)."
+    );
+  }
+  const previousCompany = cachedCompanyName;
+  const wasCleared = previousCompany !== null && previousCompany !== actual;
+  if (wasCleared) {
+    await clearCache();
+  }
+  cachedCompanyName = actual;
+  return { companyName: actual, wasCleared, previousCompany };
+}
+
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -191,8 +256,17 @@ async function fetchCollection(
 // Pulls ledgers, groups, and stock items from Tally into this session's SQL
 // cache, replacing whatever was there before (use sync_vouchers_to_sql for
 // voucher headers, which are additive by date range instead).
+// Appended to a sync's success message only when ensureCacheCompanyMatch
+// actually found and cleared a stale other-company cache — silent otherwise,
+// so the common case (same company as last time) doesn't grow noisy.
+function companyChangeNote(wasCleared: boolean, previousCompany: string | null, companyName: string): string {
+  return wasCleared
+    ? ` Note: Tally's active company changed since the last sync (was "${previousCompany}", now "${companyName}") — the previous cache was cleared first to avoid mixing data from different companies.`
+    : "";
+}
+
 export async function syncAll(): Promise<string> {
-  await ensureSchema();
+  const { companyName, wasCleared, previousCompany } = await ensureCacheCompanyMatch();
 
   const [ledgers, groups, stockItems] = await Promise.all([
     fetchCollection("Ledger", [
@@ -244,9 +318,10 @@ export async function syncAll(): Promise<string> {
 
   return (
     `Synced ${ledgers.length} ledgers, ${groups.length} groups, ` +
-    `${stockItems.length} stock items into the local SQL cache. ` +
+    `${stockItems.length} stock items into the local SQL cache for company "${companyName}". ` +
     `Vouchers are not synced by this tool — use sync_vouchers_to_sql(from, to) for those, ` +
-    `one date range at a time (quarterly is a safe chunk size for a busy company).`
+    `one date range at a time (quarterly is a safe chunk size for a busy company).` +
+    companyChangeNote(wasCleared, previousCompany, companyName)
   );
 }
 
@@ -261,7 +336,7 @@ function syncVouchersXml(fromDate: string, toDate: string): string {
 // single request large enough to risk Tally's gateway timing out —
 // re-running for a range that was already synced replaces just that range.
 export async function syncVouchers(from: string, to: string): Promise<string> {
-  await ensureSchema();
+  const { companyName, wasCleared, previousCompany } = await ensureCacheCompanyMatch();
 
   const xml = syncVouchersXml(toTallyActionDate(from), toTallyActionDate(to));
   const result = await tallyRequest(xml);
@@ -293,10 +368,11 @@ export async function syncVouchers(from: string, to: string): Promise<string> {
   }
 
   return (
-    `Synced ${rows.length} vouchers for ${from} to ${to} into this session's SQL cache ` +
+    `Synced ${rows.length} vouchers for ${from} to ${to} into this session's SQL cache for company "${companyName}" ` +
     `(cleared when this session ends — sync again next session, or after switching companies). ` +
     `Call again with other date ranges to build up full history for this session — ` +
-    `each call only replaces vouchers within its own date range.`
+    `each call only replaces vouchers within its own date range.` +
+    companyChangeNote(wasCleared, previousCompany, companyName)
   );
 }
 
@@ -319,7 +395,7 @@ function syncVoucherItemsXml(fromDate: string, toDate: string): string {
 // (godown/batch only populate where actually set, verified against known
 // ground truth). Same chunked, additive-by-date-range model as syncVouchers.
 export async function syncVoucherItems(from: string, to: string): Promise<string> {
-  await ensureSchema();
+  const { companyName, wasCleared, previousCompany } = await ensureCacheCompanyMatch();
 
   const xml = syncVoucherItemsXml(toTallyActionDate(from), toTallyActionDate(to));
   const result = await tallyRequest(xml);
@@ -375,11 +451,12 @@ export async function syncVoucherItems(from: string, to: string): Promise<string
 
   return (
     `Synced ${itemCount} inventory line items (across ${rows.length} vouchers checked) for ${from} to ${to} ` +
-    `into this session's SQL cache table 'voucher_items' (cleared when this session ends). ` +
+    `into this session's SQL cache table 'voucher_items' for company "${companyName}" (cleared when this session ends). ` +
     `Query it directly for movement analysis (SUM(qty) grouped by stock_item/voucher_type/date), ` +
     `godown-wise stock (GROUP BY godown), or batch-level detail — there is no separate "report" tool for these, ` +
     `it's just SQL over this table via query_sql. Note: qty/amount are unsigned as Tally stores them — use ` +
-    `is_deemed_positive and voucher_type together to determine inward vs outward direction for movement analysis.`
+    `is_deemed_positive and voucher_type together to determine inward vs outward direction for movement analysis.` +
+    companyChangeNote(wasCleared, previousCompany, companyName)
   );
 }
 
@@ -401,7 +478,7 @@ function syncVoucherLedgerEntriesXml(fromDate: string, toDate: string): string {
 // historical queries too. Same chunked, additive-by-date-range model as
 // syncVouchers/syncVoucherItems.
 export async function syncVoucherLedgerEntries(from: string, to: string): Promise<string> {
-  await ensureSchema();
+  const { companyName, wasCleared, previousCompany } = await ensureCacheCompanyMatch();
 
   const xml = syncVoucherLedgerEntriesXml(toTallyActionDate(from), toTallyActionDate(to));
   const result = await tallyRequest(xml);
@@ -456,13 +533,14 @@ export async function syncVoucherLedgerEntries(from: string, to: string): Promis
 
   return (
     `Synced ${entryCount} ledger lines (across ${rows.length} vouchers checked) for ${from} to ${to} into this ` +
-    `session's SQL cache table 'voucher_ledger_entries' (cleared when this session ends). Query it directly to ` +
+    `session's SQL cache table 'voucher_ledger_entries' for company "${companyName}" (cleared when this session ends). Query it directly to ` +
     `see exactly which vouchers post to a given ledger and for how much — e.g. GROUP BY ledger, voucher_type to ` +
     `split a combined ledger's balance apart, or filter by ledger to reconcile its movements voucher by voucher. ` +
     `amount is SIGNED (negative for a debit line, positive for a credit line, confirmed live: a Sales invoice's ` +
     `party ledger comes back negative while its Sales/VAT lines come back positive, summing to zero) — sum it ` +
     `directly rather than combining with is_deemed_positive, which is kept only for cross-reference against ` +
-    `voucher_items' own use of that same field.`
+    `voucher_items' own use of that same field.` +
+    companyChangeNote(wasCleared, previousCompany, companyName)
   );
 }
 
@@ -478,7 +556,7 @@ export async function cacheProfitAndLoss(
   from: string,
   to: string
 ): Promise<void> {
-  await ensureSchema();
+  await ensureCacheCompanyMatch();
   const fromIso = toIsoDate(from);
   const toIso = toIsoDate(to);
   await db.exec("BEGIN");
@@ -502,7 +580,7 @@ export async function cacheStockSummary(
   rows: Record<string, unknown>[],
   asOf: string
 ): Promise<void> {
-  await ensureSchema();
+  await ensureCacheCompanyMatch();
   const asOfIso = toIsoDate(asOf);
   await db.exec("BEGIN");
   try {
@@ -531,7 +609,7 @@ export async function cacheBalanceSheet(
   rows: { groupName: string | null; amount: number | null }[],
   asOf: string
 ): Promise<void> {
-  await ensureSchema();
+  await ensureCacheCompanyMatch();
   const asOfIso = toIsoDate(asOf);
   await db.exec("BEGIN");
   try {
@@ -558,7 +636,7 @@ export async function cacheTrialBalance(
   from: string,
   to: string
 ): Promise<void> {
-  await ensureSchema();
+  await ensureCacheCompanyMatch();
   const fromIso = toIsoDate(from);
   const toIso = toIsoDate(to);
   await db.exec("BEGIN");
@@ -587,7 +665,7 @@ export async function cacheVatSummary(
   from: string,
   to: string
 ): Promise<void> {
-  await ensureSchema();
+  await ensureCacheCompanyMatch();
   const fromIso = toIsoDate(from);
   const toIso = toIsoDate(to);
   await db.exec("BEGIN");
@@ -613,7 +691,7 @@ export async function cacheGstSummary(
   from: string,
   to: string
 ): Promise<void> {
-  await ensureSchema();
+  await ensureCacheCompanyMatch();
   const fromIso = toIsoDate(from);
   const toIso = toIsoDate(to);
   await db.exec("BEGIN");
@@ -645,7 +723,19 @@ function stripStringLiterals(sql: string): string {
 }
 
 export async function runSql(sql: string): Promise<string> {
-  await ensureSchema();
+  // Unlike the sync_*_to_sql tools, this one doesn't fetch anything fresh —
+  // it can only ever answer from whatever is already cached. So a detected
+  // company change is refused outright rather than silently run against the
+  // now-cleared (and therefore misleadingly empty, not "this company has no
+  // data") tables — see ensureCacheCompanyMatch's own comment for why.
+  const { companyName, wasCleared, previousCompany } = await ensureCacheCompanyMatch();
+  if (wasCleared) {
+    throw new Error(
+      `Tally's active company changed since the last sync (was "${previousCompany}", now "${companyName}") — ` +
+        `the cached data was for a different company and has been cleared to avoid answering with the wrong ` +
+        `company's figures. Re-run the relevant sync_*_to_sql tool(s) for "${companyName}" before querying again.`
+    );
+  }
 
   const trimmed = sql.trim().replace(/;+\s*$/, "");
   if (!/^SELECT\b/i.test(trimmed)) {

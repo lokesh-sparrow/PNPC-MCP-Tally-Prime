@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { tallyRequest, buildCollectionXml, TallyConnectionError, TALLY_URL, CollectionField } from "./tally.js";
 import { cleanTallyResult, extractRecords } from "./clean.js";
 import { render } from "./templates.js";
-import { syncAll, syncVouchers, syncVoucherItems, syncVoucherLedgerEntries, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary, clearCache } from "./db.js";
+import { syncAll, syncVouchers, syncVoucherItems, syncVoucherLedgerEntries, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary, clearCache, setKnownCompany } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
 
@@ -2784,9 +2784,12 @@ export const tools = [
     name: "sync_to_sql",
     description:
       "Pull ledgers, groups, and stock items from TallyPrime into this session's SQL cache (in-memory — gone when " +
-      "this session ends, and replaced whenever you switch company and re-sync, so nothing lingers between " +
-      "different companies), so query_sql can run fast arbitrary queries without hitting Tally each time. Does " +
-      "NOT sync vouchers — use sync_vouchers_to_sql for those, one date range at a time.",
+      "this session ends), so query_sql can run fast arbitrary queries without hitting Tally each time. Every " +
+      "sync/query tool checks which company is actually open in Tally right before touching the cache and clears " +
+      "it if that's changed since the last one — however the switch happened (set_company, Tally's own UI, or a " +
+      "connector restart) — so a stale company's rows never silently answer under a new company's name; the " +
+      "return message says so when it happens. Does NOT sync vouchers — use sync_vouchers_to_sql for those, one " +
+      "date range at a time.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -2797,8 +2800,10 @@ export const tools = [
       "aggregate/report on them (e.g. sales by customer by month) without re-fetching from Tally. Call this once " +
       "per chunk to build up full multi-year history for the CURRENTLY OPEN company within this session — " +
       "re-running for the SAME range just refreshes it (safe to re-run), and each call only touches vouchers " +
-      "within its own date range, so calling it for 2024 then 2025 gives you both, not just the latest. If you " +
-      "switch companies (set_company), the cache is cleared automatically, so re-sync before querying again. " +
+      "within its own date range, so calling it for 2024 then 2025 gives you both, not just the latest. Checks " +
+      "which company is actually open in Tally first and clears the whole cache if it's changed since the last " +
+      "sync/query — however that happened, not just via set_company — so a prior company's vouchers never " +
+      "silently mix into this one's results. " +
       "IMPORTANT: pick a chunk size that won't " +
       "time out — a full year (~7,500 vouchers here) took ~6s against the 10s request timeout; prefer quarterly " +
       "or monthly chunks for a busy company, and back off further if a call times out. Does not include stock " +
@@ -2825,8 +2830,9 @@ export const tools = [
       "UNSIGNED as Tally stores them on the inventory entry; use is_deemed_positive together with voucher_type " +
       "to work out inward vs outward direction. A voucher with no stock items (Payment, Journal, etc.) " +
       "contributes zero rows, not an empty one. Same chunked, additive-by-date-range model and same timeout " +
-      "caution as sync_vouchers_to_sql — quarterly/monthly chunks for a busy company. If you switch companies " +
-      "(set_company), the cache is cleared automatically, so re-sync before querying again.",
+      "caution as sync_vouchers_to_sql — quarterly/monthly chunks for a busy company. Checks which company is " +
+      "actually open in Tally first and clears the whole cache if it's changed since the last sync/query — " +
+      "however that happened, not just via set_company.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2849,8 +2855,8 @@ export const tools = [
       "confirmed live: a Sales invoice's party ledger line comes back negative while its Sales/VAT lines come " +
       "back positive, summing to zero across the voucher) — sum it directly. Same chunked, additive-by-date-" +
       "range model and same timeout caution as sync_vouchers_to_sql/sync_voucher_items_to_sql — quarterly/" +
-      "monthly chunks for a busy company. If you switch companies (set_company), the cache is cleared " +
-      "automatically, so re-sync before querying again.",
+      "monthly chunks for a busy company. Checks which company is actually open in Tally first and clears the " +
+      "whole cache if it's changed since the last sync/query — however that happened, not just via set_company.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2879,14 +2885,16 @@ export const tools = [
       "profit_and_loss(ledger_name, group_name, closing_balance, period_from, period_to), " +
       "stock_summary(name, parent, opening_qty, closing_qty, opening_value, closing_value, as_of_date), " +
       "balance_sheet(group_name, amount, as_of_date), trial_balance(name, debit_amount, credit_amount, " +
-      "period_from, period_to), and vat_summary(ledger_name, category, closing_balance, period_from, period_to) " +
-      "are populated automatically, no separate sync step — every get_profit_and_loss/get_stock_summary/" +
-      "get_balance_sheet/get_trial_balance/get_vat_liability_summary call refreshes its table with that call's " +
-      "result, so a follow-up question about the same report can query it here instead of re-fetching from " +
-      "Tally. Each of these five only ever holds the most recent call's data, not a history — re-call the " +
-      "report tool if you need a different period. set_company automatically empties every one of these " +
-      "tables when the active company changes, so a query never silently returns a previous company's rows " +
-      "— it just means every table is empty again right after switching, until re-synced/re-fetched.",
+      "period_from, period_to), vat_summary(ledger_name, category, closing_balance, period_from, period_to), and " +
+      "gst_summary(ledger_name, category, closing_balance, period_from, period_to) are populated automatically, " +
+      "no separate sync step — every get_profit_and_loss/get_stock_summary/get_balance_sheet/get_trial_balance/" +
+      "get_vat_liability_summary/get_gst_liability_summary call refreshes its table with that call's result, so a " +
+      "follow-up question about the same report can query it here instead of re-fetching from Tally. Each of " +
+      "these six only ever holds the most recent call's data, not a history — re-call the report tool if you " +
+      "need a different period. Every call here checks which company is actually open in Tally right now against " +
+      "what the cache was last synced/queried for, however that company was arrived at (set_company, Tally's own " +
+      "UI, or a connector restart) — a mismatch clears the stale cache and refuses to run, rather than silently " +
+      "answering with a previous company's rows under the new company's name.",
     inputSchema: {
       type: "object",
       properties: {
@@ -5531,6 +5539,7 @@ export async function handleTool(
       // under the new company's name.
       cachedGodownNames = null;
       await clearCache();
+      setKnownCompany(companyName);
       return JSON.stringify("OK");
     }
 

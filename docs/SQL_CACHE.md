@@ -150,16 +150,22 @@ query_sql: SELECT voucher_type, SUM(amount) FROM voucher_ledger_entries
 
 - **In-memory and session-only — deliberately, not just as a limitation of
   the underlying engine.** The cache is lost whenever the server process
-  restarts, and no row records which Tally company it came from. Since one
-  server instance can be pointed at many different client companies over
-  time via `set_company`, persisting the cache across a company switch
-  would risk silently mixing one client's numbers with another's — so
-  `set_company` empties every one of these tables (the manually-synced ones
-  and the six automatic ones alike) the moment the active company changes,
-  rather than leaving that to be remembered. This means every table is
-  simply empty right after a switch — re-sync/re-fetch before querying, and
-  before answering any report that needs up-to-the-minute figures either
-  way.
+  restarts, and no individual row records which Tally company it came from.
+  Since one server instance can be pointed at many different client
+  companies over time, persisting the cache across a company switch would
+  risk silently mixing one client's numbers with another's. Rather than
+  relying only on `set_company` to catch this (a company can also change in
+  Tally's own UI, or be reset by a connector restart/update — neither of
+  which `set_company` sees), every sync/query tool asks Tally which company
+  is actually open right before touching the cache and compares that
+  against what the cache was last synced/queried for. A mismatch — however
+  it happened — empties every one of these tables (the manually-synced ones
+  and the six automatic ones alike) first: `sync_*_to_sql` clears and then
+  proceeds with the fresh sync, saying so in its return message; `query_sql`
+  clears and refuses to run rather than silently answering from what's now
+  a stale, wrong-company cache. This was hit live once already — see the
+  note in [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — before this check
+  existed.
 - **`vouchers` only carries header-level detail.** No stock item or ledger
   line breakdown is cached there — use `get_vouchers` / `get_ledger_vouchers`
   for that, `sync_voucher_items_to_sql` for the inventory line items, or
