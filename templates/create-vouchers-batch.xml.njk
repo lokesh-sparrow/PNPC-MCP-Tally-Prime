@@ -1,0 +1,48 @@
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        {% for voucher in vouchers %}<TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="{{ voucher.voucherType }}" ACTION="Create">
+            <DATE>{{ voucher.tallyDate }}</DATE>
+            <VOUCHERTYPENAME>{{ voucher.voucherType }}</VOUCHERTYPENAME>
+            {% if voucher.voucherNumber %}<VOUCHERNUMBER>{{ voucher.voucherNumber }}</VOUCHERNUMBER>{% endif %}
+            {% if voucher.reference %}<REFERENCE>{{ voucher.reference }}</REFERENCE>{% endif %}
+            {% if voucher.referenceDate %}<REFERENCEDATE>{{ voucher.referenceDate }}</REFERENCEDATE>{% endif %}
+            {% if voucher.buyerTrn %}<TRADERCONSVATTINNO>{{ voucher.buyerTrn }}</TRADERCONSVATTINNO>
+            <BASICBUYERSSALESTAXNO>{{ voucher.buyerTrn }}</BASICBUYERSSALESTAXNO>{% endif %}
+            {% if voucher.buyerState %}<STATENAME>{{ voucher.buyerState }}</STATENAME>{% endif %}
+            {% if voucher.buyerCountry %}<COUNTRYOFRESIDENCE>{{ voucher.buyerCountry }}</COUNTRYOFRESIDENCE>{% endif %}
+            {% if voucher.placeOfSupplyEmirate %}<EMIRATEPOS>{{ voucher.placeOfSupplyEmirate }}</EMIRATEPOS>{% endif %}
+            {% if voucher.placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ voucher.placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
+            <NARRATION>{{ voucher.narration }}</NARRATION>
+            {% for entry in voucher.entries %}<ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>{{ entry.ledgerName }}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
+              <AMOUNT>{{ entry.amount }}</AMOUNT>
+              {% if entry.billName %}<BILLALLOCATIONS.LIST>
+                <NAME>{{ entry.billName }}</NAME>
+                <BILLTYPE>{{ entry.billType }}</BILLTYPE>
+                <AMOUNT>{{ entry.amount }}</AMOUNT>
+              </BILLALLOCATIONS.LIST>{% endif %}
+              {% if entry.costCentre %}<CATEGORYALLOCATIONS.LIST>
+                <CATEGORY>{{ entry.costCategory }}</CATEGORY>
+                <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
+                <COSTCENTREALLOCATIONS.LIST>
+                  <NAME>{{ entry.costCentre }}</NAME>
+                  <AMOUNT>{{ entry.amount }}</AMOUNT>
+                </COSTCENTREALLOCATIONS.LIST>
+              </CATEGORYALLOCATIONS.LIST>{% endif %}
+            </ALLLEDGERENTRIES.LIST>
+            {% endfor %}
+          </VOUCHER>
+        </TALLYMESSAGE>
+        {% endfor %}
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

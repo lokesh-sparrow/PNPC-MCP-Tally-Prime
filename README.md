@@ -114,7 +114,7 @@ exposing it without opening a router port, and
 [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md) for the OAuth login
 flow itself.
 
-## Available tools (86 total)
+## Available tools (87 total)
 
 You don't call these directly — just describe what you want in chat and Claude
 picks the right one. For a plain-English example prompt per tool, grouped by
@@ -164,6 +164,7 @@ just whether Tally accepted the request. See
 | Tool | Input | Output |
 |---|---|---|
 | `create_voucher` | `voucherType`, `date`, `voucherNumber?`, `reference?`, `narration?`, `debitLedger`/`creditLedger`/`amount` (simple 2-leg) **or** `entries?` (3+ legs), plus `debitBillName?`, `debitBillType?`, `creditBillName?`, `creditBillType?`, `debitCostCentre?`, `creditCostCentre?`, `costCategory?` | Creates a Payment/Receipt/Journal/Contra voucher — either a simple debit+credit pair, or any number of lines via `entries` (e.g. one payment split across three expense ledgers). Bill-wise allocation (`New Ref` / `Agst Ref`) requires `maintainBillWise` to have been set on the ledger. `voucherNumber` overrides Tally's auto-numbering; `reference` sets Tally's voucher-level `<REFERENCE>` field (e.g. a supplier's bill number) |
+| `create_vouchers_batch` | `vouchers` (array, same shape as `create_voucher` but `narration` required and unique per `voucherType` across the batch), `chunkSize?` (default 10, max 50) | Posts many vouchers in one call for bulk work (hundreds of adjustment journals, etc). Splits into chunks and bulk-verifies each chunk against Tally afterward by (`voucherType`, `narration`) — not `voucherNumber`, confirmed live to be silently reassigned by Tally's own auto-series even when set explicitly — even on a client-side error/timeout, since that doesn't prove Tally didn't still create some of them — reporting exactly which vouchers landed and which didn't, so a partial failure can be retried precisely rather than blindly resending everything |
 | `update_voucher` | `voucherType`, `voucherNumber`, `date`, `reference?`, `narration?`, `debitLedger`/`creditLedger`/`amount` **or** `entries?` | Replaces an existing voucher's entries/reference in place — matched by type + date + voucher number |
 | `delete_voucher` | `voucherType`, `voucherNumber`, `date` | Permanently deletes a voucher — no trace left, distinct from cancelling (which keeps it visible, marked Cancelled) |
 | `create_stock_journal` | `date`, `narration?`, `sources` (array of `stockItem`, `qty`, `rate`, `unit`, `godown?`, `batchName?`), `destinations` (same shape), `additionalCosts?` (array of `ledgerName`, `amount`, `allocationType?`), `voucherType?`, `voucherNumber?` | Creates a Stock Journal (or Manufacturing Journal, via `voucherType`) voucher moving inventory from one or more source items to one or more destination items — supports multiple raw materials in and multiple finished/by-products out in a single voucher, plus optional additional costs (labour, freight) folded into the produced items' valuation. Inventory-only, no ledger balance effect from `additionalCosts` itself — see the note below |

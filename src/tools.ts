@@ -616,6 +616,86 @@ export const tools = [
     },
   },
   {
+    name: "create_vouchers_batch",
+    description:
+      "Post many vouchers (Journal, Payment, Receipt, etc. — same shape as create_voucher, one entry per voucher) " +
+      "in one call, for bulk work where posting one at a time is impractical (e.g. hundreds of balance-" +
+      "confirmation adjustment journals). Internally splits into chunks (default 10, max 50 — Tally's own gateway " +
+      "has a 10-second timeout per request, and a bigger single import risks silently exceeding it) and, after " +
+      "each chunk posts, runs ONE bulk query to confirm exactly which vouchers in that chunk actually exist in " +
+      "Tally now — this always runs, even if the post itself errored or timed out, because a client-side timeout " +
+      "does not mean Tally didn't still create some or all of them server-side; retrying without checking first " +
+      "risks posting duplicates. Verification matches each voucher back by (voucherType, narration) — NOT " +
+      "voucherNumber, confirmed live to be unreliable even when set explicitly (Tally silently reassigned its own " +
+      "auto-series number instead for a Journal voucher); reference was tried next and also came back empty on " +
+      "read. narration is what's confirmed live to persist exactly as sent, so it's REQUIRED and must be non-" +
+      "empty on every voucher, and must be unique per voucherType across the whole batch — two vouchers sharing " +
+      "the same (voucherType, narration) can't be told apart afterward and are rejected up front as invalid " +
+      "rather than silently mismatched (e.g. embed each row's own reference/id in the narration text). The " +
+      "result names exactly which vouchers were confirmed and which were not, per chunk, so a partial failure " +
+      "can be retried by resending only the ones that didn't land — never blindly resend the whole batch. Does " +
+      "not go through preview_write/confirm_write given the scale involved; sending a small batch (2-3 vouchers) " +
+      "first to confirm shape/ledger names before a large run is recommended.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vouchers: {
+          type: "array",
+          description: "One entry per voucher, same fields as create_voucher — narration is required here and must be unique per voucherType across the batch (see the tool description).",
+          items: {
+            type: "object",
+            properties: {
+              voucherType: { type: "string", description: "Voucher type, e.g. 'Payment', 'Receipt', 'Journal'" },
+              date: { type: "string", description: "Voucher date in DD-MM-YYYY format" },
+              voucherNumber: { type: "string", description: "Optional, same as create_voucher — NOT used for verification here (confirmed live unreliable, see narration instead). Omit to let Tally auto-number." },
+              reference: { type: "string", description: "Free-text reference (Tally's voucher-level REFERENCE field)." },
+              referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
+              narration: { type: "string", description: "Required and must be non-empty — the key this tool uses to confirm a voucher posted. Must be unique per voucherType across the batch." },
+              debitLedger: { type: "string", description: "Ledger to debit (simple 2-leg mode; omit if using 'entries')" },
+              creditLedger: { type: "string", description: "Ledger to credit (simple 2-leg mode; omit if using 'entries')" },
+              amount: { type: "number", description: "Amount (simple 2-leg mode; omit if using 'entries')" },
+              debitBillName: { type: "string", description: "Bill reference name for the debit leg (optional)." },
+              debitBillType: { type: "string", description: "'New Ref' or 'Agst Ref' for the debit leg. Defaults to 'New Ref' if debitBillName is set." },
+              creditBillName: { type: "string", description: "Same as debitBillName, for the credit leg." },
+              creditBillType: { type: "string", description: "Same as debitBillType, for the credit leg." },
+              debitCostCentre: { type: "string", description: "Cost centre for the debit leg (optional)." },
+              creditCostCentre: { type: "string", description: "Cost centre for the credit leg (optional)." },
+              costCategory: { type: "string", description: "Cost category. Defaults to 'Primary Cost Category'." },
+              entries: {
+                type: "array",
+                description: "For a voucher with more than 2 lines — replaces debitLedger/creditLedger/amount entirely.",
+                items: {
+                  type: "object",
+                  properties: {
+                    ledgerName: { type: "string" },
+                    amount: { type: "number" },
+                    type: { type: "string", enum: ["debit", "credit"] },
+                    billName: { type: "string" },
+                    billType: { type: "string" },
+                    costCentre: { type: "string" },
+                    costCategory: { type: "string" },
+                  },
+                  required: ["ledgerName", "amount", "type"],
+                },
+              },
+              buyerTrn: { type: "string", description: "Buyer's TRN, Sales-class vouchers only — see create_voucher." },
+              buyerState: { type: "string", description: "Buyer's Emirate/state, Sales-class vouchers only." },
+              buyerCountry: { type: "string", description: "Buyer's country, Sales-class vouchers only." },
+              placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate." },
+              placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country." },
+            },
+            required: ["voucherType", "date", "narration"],
+          },
+        },
+        chunkSize: {
+          type: "number",
+          description: "Vouchers per internal request. Defaults to 10. Keep at or below 50 — Tally's gateway has a 10-second timeout per request and larger imports take proportionally longer server-side.",
+        },
+      },
+      required: ["vouchers"],
+    },
+  },
+  {
     name: "create_stock_journal",
     description:
       "Create a Stock Journal voucher in TallyPrime, moving inventory from one or more source stock items to " +
@@ -3238,6 +3318,129 @@ function createVoucherXml(args: {
   });
 }
 
+type VoucherBatchItem = {
+  voucherType: string;
+  date: string;
+  // Optional, same as create_voucher — confirmed live NOT to be a reliable
+  // matching key even when explicitly set: Tally silently reassigned its
+  // own auto-series number instead of honoring an explicit VOUCHERNUMBER
+  // for a Journal voucher here. reference was tried next and also came back
+  // empty on read for a Journal (its own description already hints it's
+  // really an Order-class field). narration is the one field confirmed
+  // live to persist and read back exactly as sent, across multiple
+  // vouchers — see the required, non-empty check on it below and the
+  // narration-based matching in verifyVouchersBatchBulk.
+  voucherNumber?: string;
+  reference?: string;
+  referenceDate?: string;
+  narration?: string;
+  debitLedger?: string;
+  creditLedger?: string;
+  amount?: number;
+  debitBillName?: string;
+  debitBillType?: string;
+  creditBillName?: string;
+  creditBillType?: string;
+  debitCostCentre?: string;
+  creditCostCentre?: string;
+  costCategory?: string;
+  entries?: VoucherEntryInput[];
+  buyerTrn?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  placeOfSupplyEmirate?: string;
+  placeOfSupplyCountry?: string;
+};
+
+// Validates and shapes one batch item without sending anything — split out
+// so the caller can validate every item in a chunk up front (e.g. a
+// double-entry imbalance, or a blank narration — see below) and exclude
+// just the bad ones, rather than one bad item silently taking down XML
+// generation for the whole chunk.
+function buildVoucherBatchEntry(v: VoucherBatchItem) {
+  // narration is the only field confirmed live to survive the round trip
+  // (voucherNumber gets silently reassigned by Tally's own auto-series even
+  // when set explicitly; reference came back empty on read for a Journal
+  // voucher) — so it's what bulk verification below matches on. A blank or
+  // shared narration makes that matching meaningless (every posted voucher
+  // with the same text looks the same), so it's required and checked for
+  // uniqueness across the batch by the caller (create_vouchers_batch),
+  // not here — this only checks it's non-empty.
+  if (!v.narration || !v.narration.trim()) {
+    throw new Error("narration is required and must be non-empty for create_vouchers_batch — it's the only field this can reliably verify a posted voucher by.");
+  }
+  return {
+    voucherType: v.voucherType,
+    tallyDate: v.date.split("-").reverse().join(""),
+    voucherNumber: v.voucherNumber,
+    reference: v.reference,
+    referenceDate: v.referenceDate ? v.referenceDate.split("-").reverse().join("") : undefined,
+    narration: v.narration,
+    buyerTrn: v.buyerTrn,
+    buyerState: v.buyerState,
+    buyerCountry: v.buyerCountry,
+    placeOfSupplyEmirate: v.placeOfSupplyEmirate,
+    placeOfSupplyCountry: v.placeOfSupplyCountry,
+    entries: buildVoucherEntries(v),
+  };
+}
+
+function createVouchersBatchXml(vouchers: ReturnType<typeof buildVoucherBatchEntry>[]): string {
+  return render("create-vouchers-batch.xml.njk", { vouchers });
+}
+
+// Bulk equivalent of verifyVoucherWrite — one query covering every date in
+// the batch, instead of one query per voucher. Tally's own import response
+// for a multi-voucher request only ever gives aggregate CREATED/ERRORS/
+// EXCEPTIONS counts (confirmed live against tally.imp's own log — it never
+// names which voucher within a batch failed), so this is the only way to
+// know which specific vouchers actually landed. Matches by (voucherType,
+// narration) within the covered date range — NOT voucherNumber, confirmed
+// live to be unreliable: posting a Journal with an explicit voucherNumber
+// had Tally silently reassign its own auto-series number instead, so
+// matching on the requested number found nothing even though the voucher
+// posted correctly. narration is what's confirmed live to persist exactly
+// as sent. If two items in the same batch share the same (voucherType,
+// narration), this can't tell them apart — create_vouchers_batch's own
+// validation catches that before anything is sent.
+async function verifyVouchersBatchBulk(
+  items: { voucherType: string; narration: string; date: string }[]
+): Promise<Set<string>> {
+  if (items.length === 0) return new Set();
+  const toIso = (ddmmyyyy: string) => {
+    const [dd, mm, yyyy] = ddmmyyyy.split("-");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  let minItem = items[0];
+  let maxItem = items[0];
+  let minIso = toIso(items[0].date);
+  let maxIso = minIso;
+  for (const it of items) {
+    const iso = toIso(it.date);
+    if (iso < minIso) {
+      minIso = iso;
+      minItem = it;
+    }
+    if (iso > maxIso) {
+      maxIso = iso;
+      maxItem = it;
+    }
+  }
+  const xml = render("vouchers-in-range.xml.njk", {
+    fromDate: toTallyActionDate(minItem.date),
+    toDate: toTallyActionDate(maxItem.date),
+  });
+  const rows = extractRecords(await tallyRequest(xml)) as { VOUCHER_TYPE?: string; NARRATION?: string }[];
+  const present = new Set(rows.map((r) => `${r.VOUCHER_TYPE}|${String(r.NARRATION ?? "").trim()}`));
+  const confirmed = new Set<string>();
+  for (const it of items) {
+    if (present.has(`${it.voucherType}|${it.narration.trim()}`)) {
+      confirmed.add(`${it.voucherType}|${it.narration}|${it.date}`);
+    }
+  }
+  return confirmed;
+}
+
 // Omitting godown on an inventory line doesn't just leave it blank — the
 // templates only emit BATCHALLOCATIONS.LIST (godown + batch together) when
 // godown is set, so skipping it silently drops the whole allocation. Tally
@@ -5582,6 +5785,98 @@ export async function handleTool(
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date)
+      );
+    }
+
+    case "create_vouchers_batch": {
+      const { vouchers, chunkSize } = args as { vouchers: VoucherBatchItem[]; chunkSize?: number };
+      const size = Math.max(1, Math.min(chunkSize ?? 10, 50));
+
+      // Validate/shape every voucher up front — one bad entry (e.g. a
+      // double-entry imbalance from buildVoucherEntries, or a blank
+      // narration) is excluded and reported, not allowed to take down XML
+      // generation for its whole chunk.
+      let valid: { item: VoucherBatchItem; entry: ReturnType<typeof buildVoucherBatchEntry> }[] = [];
+      const invalid: { item: VoucherBatchItem; reason: string }[] = [];
+      for (const item of vouchers) {
+        try {
+          valid.push({ item, entry: buildVoucherBatchEntry(item) });
+        } catch (err) {
+          invalid.push({ item, reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      // Bulk verification matches by (voucherType, narration) — see
+      // verifyVouchersBatchBulk — so two vouchers sharing both can't be
+      // told apart afterward. Pulled out here (across the whole batch, not
+      // just within one chunk) rather than left to surface as a confusing
+      // "not confirmed" for vouchers that may have posted just fine.
+      const narrationKeyCounts = new Map<string, number>();
+      for (const v of valid) {
+        const key = `${v.item.voucherType}|${v.item.narration}`;
+        narrationKeyCounts.set(key, (narrationKeyCounts.get(key) ?? 0) + 1);
+      }
+      const dupeKeys = new Set([...narrationKeyCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key));
+      if (dupeKeys.size > 0) {
+        const stillValid: typeof valid = [];
+        for (const v of valid) {
+          const key = `${v.item.voucherType}|${v.item.narration}`;
+          if (dupeKeys.has(key)) {
+            invalid.push({
+              item: v.item,
+              reason: `narration "${v.item.narration}" is not unique for voucherType "${v.item.voucherType}" within this batch — bulk verification can't tell these apart afterward. Make each voucher's narration distinguishable (e.g. embed a row/reference id).`,
+            });
+          } else {
+            stillValid.push(v);
+          }
+        }
+        valid = stillValid;
+      }
+
+      const chunks: (typeof valid)[] = [];
+      for (let i = 0; i < valid.length; i += size) chunks.push(valid.slice(i, i + size));
+
+      const confirmed = new Set<string>();
+      const chunkReports: { chunkIndex: number; requested: number; postError: string | null; confirmedCount: number }[] = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        let postError: string | null = null;
+        try {
+          const xml = createVouchersBatchXml(chunk.map((c) => c.entry));
+          await tallyRequest(xml);
+        } catch (err) {
+          // Deliberately not rethrown — a client-side error/timeout here does
+          // not prove Tally didn't still create some or all of these
+          // server-side (confirmed pattern throughout this codebase: never
+          // trust a request's client-side outcome as Tally's true state).
+          // The bulk verify below is what actually decides what landed.
+          postError = err instanceof Error ? err.message : String(err);
+        }
+
+        const bulkConfirmed = await verifyVouchersBatchBulk(
+          chunk.map((c) => ({ voucherType: c.item.voucherType, narration: c.item.narration!, date: c.item.date }))
+        );
+        for (const key of bulkConfirmed) confirmed.add(key);
+        chunkReports.push({ chunkIndex: i, requested: chunk.length, postError, confirmedCount: bulkConfirmed.size });
+      }
+
+      const notConfirmed = valid
+        .filter((v) => !confirmed.has(`${v.item.voucherType}|${v.item.narration}|${v.item.date}`))
+        .map((v) => ({ voucherType: v.item.voucherType, voucherNumber: v.item.voucherNumber, narration: v.item.narration, date: v.item.date }));
+
+      return JSON.stringify(
+        {
+          requested: vouchers.length,
+          confirmed: confirmed.size,
+          notConfirmed: notConfirmed.length,
+          invalid: invalid.length,
+          chunks: chunkReports,
+          notConfirmedVouchers: notConfirmed,
+          invalidVouchers: invalid,
+        },
+        null,
+        2
       );
     }
 

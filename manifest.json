@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pnpc-mcp-tally-prime",
   "display_name": "PNPC-MCP-Tally-Prime",
-  "version": "1.12.1",
+  "version": "1.13.0",
   "description": "PNPC's connector for reading from and writing to TallyPrime (ledgers, vouchers, P&L, balance sheet, stock, SQL cache) directly from Claude.",
   "author": {
     "name": "PNPC Global"
@@ -80,6 +80,7 @@
     { "name": "set_company", "description": "Switch TallyPrime's active company context" },
     { "name": "set_period", "description": "Switch TallyPrime's active reporting period (from/to date)" },
     { "name": "create_voucher", "description": "Create a new voucher (e.g. Payment, Receipt, Sales, Purchase, Journal) in TallyPrime, with 2 or more ledger entries" },
+    { "name": "create_vouchers_batch", "description": "Post many vouchers in one call, chunked and verified per chunk, for bulk work where posting one at a time is impractical" },
     { "name": "create_stock_journal", "description": "Create a Stock Journal or Manufacturing Journal voucher in TallyPrime, moving inventory from one or more source items to one or more destination items" },
     { "name": "update_stock_journal", "description": "Update an existing Stock Journal or Manufacturing Journal voucher in TallyPrime" },
     { "name": "set_bill_of_materials", "description": "Attach a Bill of Materials (recipe) to a finished-goods stock item in TallyPrime" },

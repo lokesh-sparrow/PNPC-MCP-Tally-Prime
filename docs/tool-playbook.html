@@ -359,9 +359,9 @@
       right tool itself.
     </p>
     <div class="stat-row">
-      <div class="stat"><span class="n">86</span><span class="label">tools total</span></div>
+      <div class="stat"><span class="n">87</span><span class="label">tools total</span></div>
       <div class="stat"><span class="n">7</span><span class="label">categories</span></div>
-      <div class="stat"><span class="n">v1.12.1</span><span class="label">current release</span></div>
+      <div class="stat"><span class="n">v1.13.0</span><span class="label">current release</span></div>
     </div>
   </header>
 
@@ -428,6 +428,7 @@
       note: "Payments, receipts, journals, and item-line invoices — the everyday entries.",
       tools: [
         ["create_voucher", "A plain ledger-to-ledger voucher — Payment, Receipt, Journal, Contra, or a Sales/Purchase entry with no stock items.", "Record a payment of AED 5,000 from Bank to ABC Trading LLC for rent"],
+        ["create_vouchers_batch", "Posts many vouchers in one call — chunked, with each chunk verified against Tally afterward — for bulk work like hundreds of adjustment journals.", "Post these 400 balance-confirmation adjustment journals in batches of 10"],
         ["update_voucher", "Edits an existing plain voucher's amount, ledgers, or narration.", "That payment to ABC Trading LLC dated 5 March — change the amount to AED 5,500"],
         ["delete_voucher", "Permanently removes a voucher.", "Delete Payment voucher number 214 dated 5 March"],
         ["create_sales_invoice", "A real Sales invoice with stock item lines and optional VAT.", "Create a sales invoice to XYZ LLC for 10 units of Item A at AED 100 each, plus 5% VAT"],
