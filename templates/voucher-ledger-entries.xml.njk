@@ -42,22 +42,28 @@
           </PART>
           <LINE NAME="PNPCMCPEntryLine">
             <FIELDS>FldLedgerName,FldAmount,FldIsDeemedPositive,FldCostCentre</FIELDS>
-            <EXPLODE>PNPCMCPBillPart</EXPLODE>
+            <EXPLODE>PNPCMCPEntrySubPart</EXPLODE>
             <XMLTAG>ENTRY</XMLTAG>
           </LINE>
           <FIELD NAME="FldLedgerName"><SET>$LedgerName</SET><XMLTAG>ledger</XMLTAG></FIELD>
           <FIELD NAME="FldAmount"><SET>$$StringFindAndReplace:(if $$IsDebit:$Amount then -$$NumValue:$Amount else $$NumValue:$Amount):"(-)":"-"</SET><XMLTAG>amount</XMLTAG></FIELD>
           <FIELD NAME="FldIsDeemedPositive"><SET>if $IsDeemedPositive then 1 else 0</SET><XMLTAG>is_deemed_positive</XMLTAG></FIELD>
           <FIELD NAME="FldCostCentre"><SET>if $$IsEmpty:$CategoryAllocations[1].CostCentreAllocations[1].Name then "" else $CategoryAllocations[1].CostCentreAllocations[1].Name</SET><XMLTAG>cost_centre</XMLTAG></FIELD>
-          <PART NAME="PNPCMCPBillPart">
-            <LINES>PNPCMCPBillLine</LINES>
+          <PART NAME="PNPCMCPEntrySubPart">
+            <LINES>PNPCMCPBillLine,PNPCMCPDescLine</LINES>
             <REPEAT>PNPCMCPBillLine : BillAllocations</REPEAT>
+            <REPEAT>PNPCMCPDescLine : UserDescription</REPEAT>
             <SCROLLED>Vertical</SCROLLED>
           </PART>
           <LINE NAME="PNPCMCPBillLine">
             <FIELDS>FldBillName,FldBillType</FIELDS>
             <XMLTAG>BILL</XMLTAG>
           </LINE>
+          <LINE NAME="PNPCMCPDescLine">
+            <FIELDS>FldDescText</FIELDS>
+            <XMLTAG>DESCLINE</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldDescText"><SET>$UserDescription</SET><XMLTAG>text</XMLTAG></FIELD>
           <FIELD NAME="FldBillName"><SET>$Name</SET><XMLTAG>bill_name</XMLTAG></FIELD>
           <FIELD NAME="FldBillType"><SET>$BillType</SET><XMLTAG>bill_type</XMLTAG></FIELD>
           <COLLECTION NAME="PNPCMCPVoucherLedgerEntriesCollection">

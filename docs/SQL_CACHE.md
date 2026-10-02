@@ -75,7 +75,7 @@ into context a second time.
 | `stock_items` | `name`, `parent`, `closing_balance` | `sync_to_sql` (explicit) |
 | `vouchers` | `guid`, `date`, `voucher_type`, `voucher_number`, `party_ledger`, `amount`, `narration` | `sync_vouchers_to_sql` (explicit) |
 | `voucher_items` | `voucher_guid`, `date`, `voucher_type`, `voucher_number`, `stock_item`, `qty`, `rate`, `amount`, `is_deemed_positive`, `godown`, `batch` | `sync_voucher_items_to_sql` (explicit) |
-| `voucher_ledger_entries` | `voucher_guid`, `date`, `voucher_type`, `voucher_number`, `ledger`, `amount`, `is_deemed_positive`, `cost_centre`, `bill_name`, `bill_type` | `sync_voucher_ledger_entries_to_sql` (explicit) |
+| `voucher_ledger_entries` | `voucher_guid`, `date`, `voucher_type`, `voucher_number`, `ledger`, `amount`, `is_deemed_positive`, `cost_centre`, `bill_name`, `bill_type`, `description` | `sync_voucher_ledger_entries_to_sql` (explicit) |
 | `profit_and_loss` | `ledger_name`, `group_name`, `closing_balance`, `period_from`, `period_to` | `get_profit_and_loss` (automatic) |
 | `stock_summary` | `name`, `parent`, `opening_qty`, `closing_qty`, `opening_value`, `closing_value`, `as_of_date` | `get_stock_summary` (automatic) |
 | `balance_sheet` | `group_name`, `amount`, `as_of_date` | `get_balance_sheet` (automatic) |

@@ -140,7 +140,8 @@ async function ensureSchema(): Promise<void> {
         is_deemed_positive BOOLEAN,
         cost_centre TEXT,
         bill_name TEXT,
-        bill_type TEXT
+        bill_type TEXT,
+        description TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_vle_date ON voucher_ledger_entries(date);
       CREATE INDEX IF NOT EXISTS idx_vle_ledger ON voucher_ledger_entries(ledger);
@@ -503,12 +504,21 @@ export async function syncVoucherLedgerEntries(from: string, to: string): Promis
       for (const entry of entries) {
         const rawBills = entry.BILL;
         const bills = rawBills ? (Array.isArray(rawBills) ? rawBills : [rawBills]) : [{}];
+        // Tally's "Additional Descriptions for Ledgers" lines, joined into one
+        // cell with " | " — each line is read separately from Tally (so a
+        // comma inside a line stays intact), the join is only for this
+        // single column.
+        const rawDesc = entry.DESCLINE;
+        const descLines = (rawDesc ? (Array.isArray(rawDesc) ? rawDesc : [rawDesc]) : [])
+          .map((d: any) => str(d?.TEXT) ?? "")
+          .filter((t: string) => t.length > 0);
+        const description = descLines.length > 0 ? descLines.join(" | ") : null;
         for (const bill of bills) {
           entryCount++;
           await db.query(
             `INSERT INTO voucher_ledger_entries
-               (voucher_guid, date, voucher_type, voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+               (voucher_guid, date, voucher_type, voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type, description)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
               str(v.VOUCHER_GUID),
               date,
@@ -520,6 +530,7 @@ export async function syncVoucherLedgerEntries(from: string, to: string): Promis
               str(entry.COST_CENTRE) || null,
               str(bill.BILL_NAME) || null,
               str(bill.BILL_TYPE) || null,
+              description,
             ]
           );
         }
@@ -539,7 +550,8 @@ export async function syncVoucherLedgerEntries(from: string, to: string): Promis
     `amount is SIGNED (negative for a debit line, positive for a credit line, confirmed live: a Sales invoice's ` +
     `party ledger comes back negative while its Sales/VAT lines come back positive, summing to zero) — sum it ` +
     `directly rather than combining with is_deemed_positive, which is kept only for cross-reference against ` +
-    `voucher_items' own use of that same field.` +
+    `voucher_items' own use of that same field. description holds a ledger line's "Additional Descriptions ` +
+    `for Ledgers" text (multiple lines joined with " | "), null where none was entered.` +
     companyChangeNote(wasCleared, previousCompany, companyName)
   );
 }

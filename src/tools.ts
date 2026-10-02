@@ -586,6 +586,18 @@ export const tools = [
         creditBillType: { type: "string", description: "Same as debitBillType, for the credit leg." },
         debitCostCentre: { type: "string", description: "Cost centre to allocate the debit leg to (optional)." },
         creditCostCentre: { type: "string", description: "Cost centre to allocate the credit leg to (optional)." },
+        debitDescription: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Additional description lines for the debit leg — Tally's built-in 'Provide Additional Descriptions for Ledgers' " +
+            "text shown in italics under that ledger line (one array entry per line, e.g. ['For KK Trading and', 'Manis Trading']). Optional.",
+        },
+        creditDescription: {
+          type: "array",
+          items: { type: "string" },
+          description: "Same as debitDescription, for the credit leg.",
+        },
         costCategory: {
           type: "string",
           description: "Cost category the cost centre belongs to. Defaults to 'Primary Cost Category'.",
@@ -594,7 +606,7 @@ export const tools = [
           type: "array",
           description:
             "For a voucher with more than 2 lines (e.g. one payment covering three expense ledgers): an array of " +
-            "{ ledgerName, amount, type: 'debit'|'credit', billName?, billType?, costCentre?, costCategory? }. " +
+            "{ ledgerName, amount, type: 'debit'|'credit', billName?, billType?, costCentre?, costCategory?, description? }. " +
             "Debit and credit amounts must sum to the same total (Tally's double-entry rule) or the call fails " +
             "with a clear error before reaching Tally. When provided, this replaces debitLedger/creditLedger/amount entirely.",
           items: {
@@ -607,6 +619,7 @@ export const tools = [
               billType: { type: "string" },
               costCentre: { type: "string" },
               costCategory: { type: "string" },
+              description: { type: "array", items: { type: "string" }, description: "Additional description lines for this ledger line, one array entry per line." },
             },
             required: ["ledgerName", "amount", "type"],
           },
@@ -660,6 +673,8 @@ export const tools = [
               creditBillType: { type: "string", description: "Same as debitBillType, for the credit leg." },
               debitCostCentre: { type: "string", description: "Cost centre for the debit leg (optional)." },
               creditCostCentre: { type: "string", description: "Cost centre for the credit leg (optional)." },
+              debitDescription: { type: "array", items: { type: "string" }, description: "Additional description lines for the debit leg (Tally's 'Additional Descriptions for Ledgers'), one array entry per line. Optional." },
+              creditDescription: { type: "array", items: { type: "string" }, description: "Same as debitDescription, for the credit leg." },
               costCategory: { type: "string", description: "Cost category. Defaults to 'Primary Cost Category'." },
               entries: {
                 type: "array",
@@ -674,6 +689,7 @@ export const tools = [
                     billType: { type: "string" },
                     costCentre: { type: "string" },
                     costCategory: { type: "string" },
+                    description: { type: "array", items: { type: "string" } },
                   },
                   required: ["ledgerName", "amount", "type"],
                 },
@@ -2813,6 +2829,15 @@ export const tools = [
         amount: { type: "number", description: "New amount of the transaction (simple 2-leg mode; omit if using 'entries')" },
         debitCostCentre: { type: "string", description: "Cost centre to allocate the debit leg to (optional)." },
         creditCostCentre: { type: "string", description: "Cost centre to allocate the credit leg to (optional)." },
+        debitDescription: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Additional description lines for the debit leg (Tally's 'Additional Descriptions for Ledgers'), one array " +
+            "entry per line. This update replaces the voucher's ledger lines, so pass the existing descriptions again if " +
+            "they should be kept — omitting them here removes them.",
+        },
+        creditDescription: { type: "array", items: { type: "string" }, description: "Same as debitDescription, for the credit leg." },
         costCategory: {
           type: "string",
           description: "Cost category the cost centre belongs to. Defaults to 'Primary Cost Category'.",
@@ -2821,7 +2846,7 @@ export const tools = [
           type: "array",
           description:
             "For a voucher with more than 2 lines: an array of { ledgerName, amount, type: 'debit'|'credit', " +
-            "billName?, billType?, costCentre?, costCategory? }, same shape as create_voucher's entries. Debit and " +
+            "billName?, billType?, costCentre?, costCategory?, description? }, same shape as create_voucher's entries. Debit and " +
             "credit amounts must sum to the same total. When provided, this replaces debitLedger/creditLedger/amount.",
           items: {
             type: "object",
@@ -2833,6 +2858,7 @@ export const tools = [
               billType: { type: "string" },
               costCentre: { type: "string" },
               costCategory: { type: "string" },
+              description: { type: "array", items: { type: "string" }, description: "Additional description lines for this ledger line, one array entry per line." },
             },
             required: ["ledgerName", "amount", "type"],
           },
@@ -2933,7 +2959,8 @@ export const tools = [
       "VAT ledger split into Output vs Input (GROUP BY ledger, voucher_type), or reconciling a party ledger's " +
       "movements voucher by voucher. amount is SIGNED (negative for a debit line, positive for a credit line — " +
       "confirmed live: a Sales invoice's party ledger line comes back negative while its Sales/VAT lines come " +
-      "back positive, summing to zero across the voucher) — sum it directly. Same chunked, additive-by-date-" +
+      "back positive, summing to zero across the voucher) — sum it directly. description carries a ledger line's " +
+      "'Additional Descriptions for Ledgers' text (several lines joined with ' | ', null where none). Same chunked, additive-by-date-" +
       "range model and same timeout caution as sync_vouchers_to_sql/sync_voucher_items_to_sql — quarterly/" +
       "monthly chunks for a busy company. Checks which company is actually open in Tally first and clears the " +
       "whole cache if it's changed since the last sync/query — however that happened, not just via set_company.",
@@ -2954,7 +2981,7 @@ export const tools = [
       "closing_balance), vouchers(guid, date, voucher_type, voucher_number, party_ledger, amount, narration), " +
       "voucher_items(voucher_guid, date, voucher_type, voucher_number, stock_item, qty, rate, amount, " +
       "is_deemed_positive, godown, batch), voucher_ledger_entries(voucher_guid, date, voucher_type, " +
-      "voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type) — all six populated " +
+      "voucher_number, ledger, amount, is_deemed_positive, cost_centre, bill_name, bill_type, description) — all six populated " +
       "only by explicitly calling sync_to_sql/sync_vouchers_to_sql/sync_voucher_items_to_sql/" +
       "sync_voucher_ledger_entries_to_sql first. Movement analysis, godown-wise stock, and batch/ageing detail " +
       "are just SELECTs over voucher_items — there is no separate report tool for them. Splitting a ledger's " +
@@ -3218,7 +3245,17 @@ type VoucherEntryInput = {
   billType?: string;
   costCentre?: string;
   costCategory?: string;
+  // Tally's built-in "Additional Descriptions for Ledgers" lines (the
+  // voucher configuration option of that name) — one array entry per line.
+  description?: string[];
 };
+
+// Blank lines are dropped: a line with no text has nothing to show in Tally
+// and would only add an empty element to the import.
+function cleanDescription(lines: string[] | undefined): string[] | undefined {
+  const cleaned = (lines ?? []).map((l) => String(l).trim()).filter((l) => l.length > 0);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
 
 function buildVoucherEntries(args: {
   debitLedger?: string;
@@ -3230,6 +3267,8 @@ function buildVoucherEntries(args: {
   creditBillType?: string;
   debitCostCentre?: string;
   creditCostCentre?: string;
+  debitDescription?: string[];
+  creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
 }) {
@@ -3249,6 +3288,7 @@ function buildVoucherEntries(args: {
       billType: e.billType ?? "New Ref",
       costCentre: e.costCentre,
       costCategory: e.costCategory ?? "Primary Cost Category",
+      description: cleanDescription(e.description),
     }));
   }
 
@@ -3264,6 +3304,7 @@ function buildVoucherEntries(args: {
       billType: args.debitBillType ?? "New Ref",
       costCentre: args.debitCostCentre,
       costCategory: args.costCategory ?? "Primary Cost Category",
+      description: cleanDescription(args.debitDescription),
     },
     {
       ledgerName: args.creditLedger,
@@ -3273,6 +3314,7 @@ function buildVoucherEntries(args: {
       billType: args.creditBillType ?? "New Ref",
       costCentre: args.creditCostCentre,
       costCategory: args.costCategory ?? "Primary Cost Category",
+      description: cleanDescription(args.creditDescription),
     },
   ];
 }
@@ -3293,6 +3335,8 @@ function createVoucherXml(args: {
   creditBillType?: string;
   debitCostCentre?: string;
   creditCostCentre?: string;
+  debitDescription?: string[];
+  creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
   buyerTrn?: string;
@@ -3343,6 +3387,8 @@ type VoucherBatchItem = {
   creditBillType?: string;
   debitCostCentre?: string;
   creditCostCentre?: string;
+  debitDescription?: string[];
+  creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
   buyerTrn?: string;
@@ -4518,6 +4564,8 @@ function updateVoucherXml(args: {
   amount?: number;
   debitCostCentre?: string;
   creditCostCentre?: string;
+  debitDescription?: string[];
+  creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
   buyerTrn?: string;
@@ -5773,6 +5821,8 @@ export async function handleTool(
         creditBillType?: string;
         debitCostCentre?: string;
         creditCostCentre?: string;
+        debitDescription?: string[];
+        creditDescription?: string[];
         costCategory?: string;
         entries?: VoucherEntryInput[];
         buyerTrn?: string;
@@ -6328,6 +6378,8 @@ export async function handleTool(
         amount?: number;
         debitCostCentre?: string;
         creditCostCentre?: string;
+        debitDescription?: string[];
+        creditDescription?: string[];
         costCategory?: string;
         entries?: VoucherEntryInput[];
         buyerTrn?: string;

@@ -22,6 +22,10 @@
               <LEDGERNAME>{{ entry.ledgerName }}</LEDGERNAME>
               <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
               <AMOUNT>{{ entry.amount }}</AMOUNT>
+              {% if entry.description %}<UDF:USERDESCRIPTION.LIST DESC="`User Description`" ISLIST="YES" TYPE="String" INDEX="29">
+                {% for line in entry.description %}<UDF:USERDESCRIPTION DESC="`User Description`">{{ line }}</UDF:USERDESCRIPTION>
+                {% endfor %}
+              </UDF:USERDESCRIPTION.LIST>{% endif %}
               {% if entry.billName %}<BILLALLOCATIONS.LIST>
                 <NAME>{{ entry.billName }}</NAME>
                 <BILLTYPE>{{ entry.billType }}</BILLTYPE>
