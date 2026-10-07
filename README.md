@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/header.jpg" alt="PNPC MCP Tally Prime: open-source MCP server for Tally Prime" width="100%">
+  <img src="assets/header.png" alt="PNPC MCP Tally Prime: open-source MCP server for Tally Prime" width="100%">
 </p>
 
 <h1 align="center">PNPC-MCP-Tally-Prime</h1>
