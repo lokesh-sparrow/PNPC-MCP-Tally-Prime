@@ -22,7 +22,7 @@
   "license": "ISC",
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.10.1",
     "nunjucks": "^3.2.4"
