@@ -68,3 +68,5 @@ credentials/
 
 # Docker
 docker-compose.override.yml
+# Audit log lock file
+*.jsonl.lock
