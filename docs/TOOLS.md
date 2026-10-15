@@ -1,6 +1,8 @@
 # Tool Reference
 
-All dates are `DD-MM-YYYY` unless stated otherwise.
+All dates are `DD-MM-YYYY` unless stated otherwise. `2026-03-31`, `31/03/2026` and
+`31-Mar-2026` are also accepted and converted; all-numeric dates are read day-first.
+A date that isn't real (e.g. `31-02-2026`) is rejected before anything is sent to Tally.
 
 ## Read tools
 

@@ -5,6 +5,7 @@ import { render } from "./templates.js";
 import { syncAll, syncVouchers, syncVoucherItems, syncVoucherLedgerEntries, runSql, cacheProfitAndLoss, cacheStockSummary, cacheBalanceSheet, cacheTrialBalance, cacheVatSummary, cacheGstSummary, clearCache, setKnownCompany } from "./db.js";
 import { readAuditLog, summarizeAuditLog, auditLogPath } from "./audit.js";
 import { getPermissionStatus } from "./permissions.js";
+import { normalizeDateArgs } from "./dates.js";
 
 export const tools = [
   {
@@ -5194,6 +5195,18 @@ export async function handleTool(
   name: string,
   args: Record<string, unknown>
 ): Promise<string> {
+  const tool = tools.find((t) => t.name === name);
+  if (tool) args = normalizeDateArgs(tool.inputSchema as Parameters<typeof normalizeDateArgs>[0], args);
+  // preview_write carries another tool's arguments inside `args` — fix those against that tool's own schema.
+  if (name === "preview_write" && args.args && typeof args.toolName === "string") {
+    const inner = tools.find((t) => t.name === args.toolName);
+    if (inner) {
+      args = {
+        ...args,
+        args: normalizeDateArgs(inner.inputSchema as Parameters<typeof normalizeDateArgs>[0], args.args),
+      };
+    }
+  }
   switch (name) {
     case "get_ledgers": {
       const { query } = args as { query?: string };

@@ -121,7 +121,9 @@ picks the right one. For a plain-English example prompt per tool, grouped by
 what they're for, see the
 **[Tool Playbook](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html)**.
 
-Dates use `DD-MM-YYYY` format, matching Tally's own convention. Full
+Dates use `DD-MM-YYYY` format, matching Tally's own convention. Other common
+spellings (`2026-03-31`, `31/03/2026`, `31-Mar-2026`) are accepted and converted;
+a date that isn't real is rejected with a clear message. Full
 machine-readable schemas: [docs/TOOLS.md](docs/TOOLS.md).
 
 ### Read
