@@ -7,9 +7,9 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="Debit Note" ACTION="Alter" OBJVIEW="Invoice Voucher View">
+          <VOUCHER DATE="{{ tallyDate }}" TAGNAME="Voucher Number" TAGVALUE="{{ voucherNumber }}" VCHTYPE="{{ voucherType }}" ACTION="Alter" OBJVIEW="Invoice Voucher View">
             <DATE>{{ tallyDate }}</DATE>
-            <VOUCHERTYPENAME>Debit Note</VOUCHERTYPENAME>
+            <VOUCHERTYPENAME>{{ voucherType }}</VOUCHERTYPENAME>
             <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
             <ISINVOICE>Yes</ISINVOICE>
             {% if reference %}<REFERENCE>{{ reference }}</REFERENCE>{% endif %}
@@ -25,6 +25,7 @@
             {% if placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
             {% for item in items %}<ALLINVENTORYENTRIES.LIST>
               <STOCKITEMNAME>{{ item.stockItem }}</STOCKITEMNAME>
+              {% if item.description %}<BASICUSERDESCRIPTION.LIST TYPE="String">{% for line in item.description %}<BASICUSERDESCRIPTION>{{ line }}</BASICUSERDESCRIPTION>{% endfor %}</BASICUSERDESCRIPTION.LIST>{% endif %}
               <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
               <RATE>{{ item.rate }}/{{ item.unit }}</RATE>
               {% if item.discountPercent %}<DISCOUNT>{{ item.discountPercent }}</DISCOUNT>{% endif %}

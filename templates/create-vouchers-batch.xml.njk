@@ -7,9 +7,25 @@
       </REQUESTDESC>
       <REQUESTDATA>
         {% for voucher in vouchers %}<TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="{{ voucher.voucherType }}" ACTION="Create">
+          <VOUCHER VCHTYPE="{{ voucher.voucherType }}" ACTION="Create"{% if voucher.isAccountingInvoice %} OBJVIEW="Invoice Voucher View"{% endif %}>
             <DATE>{{ voucher.tallyDate }}</DATE>
             <VOUCHERTYPENAME>{{ voucher.voucherType }}</VOUCHERTYPENAME>
+            {% if voucher.entryMode %}<PERSISTEDVIEW>{% if voucher.isAccountingInvoice %}Invoice Voucher View{% else %}Accounting Voucher View{% endif %}</PERSISTEDVIEW>
+            <VCHENTRYMODE>{{ voucher.entryMode }}</VCHENTRYMODE>
+            <ISINVOICE>{% if voucher.isAccountingInvoice %}Yes{% else %}No{% endif %}</ISINVOICE>{% endif %}
+            {% if voucher.isAccountingInvoice %}<PARTYNAME>{{ voucher.partyLedger }}</PARTYNAME>
+            <PARTYLEDGERNAME>{{ voucher.partyLedger }}</PARTYLEDGERNAME>
+            <BASICBASEPARTYNAME>{{ voucher.partyLedger }}</BASICBASEPARTYNAME>
+            {% if voucher.party %}<PARTYMAILINGNAME>{{ voucher.party.mailingName }}</PARTYMAILINGNAME>
+            <BASICBUYERNAME>{{ voucher.party.mailingName }}</BASICBUYERNAME>
+            <CONSIGNEEMAILINGNAME>{{ voucher.party.mailingName }}</CONSIGNEEMAILINGNAME>
+            {% if voucher.party.address %}<ADDRESS.LIST TYPE="String">{% for line in voucher.party.address %}<ADDRESS>{{ line }}</ADDRESS>{% endfor %}</ADDRESS.LIST>
+            <BASICBUYERADDRESS.LIST TYPE="String">{% for line in voucher.party.address %}<BASICBUYERADDRESS>{{ line }}</BASICBUYERADDRESS>{% endfor %}</BASICBUYERADDRESS.LIST>{% endif %}
+            {% if voucher.party.vatDealerType %}<VATDEALERTYPE>{{ voucher.party.vatDealerType }}</VATDEALERTYPE>{% endif %}
+            {% if voucher.party.state %}{% if not voucher.buyerState %}<STATENAME>{{ voucher.party.state }}</STATENAME>{% endif %}<CONSIGNEESTATENAME>{{ voucher.party.state }}</CONSIGNEESTATENAME>{% endif %}
+            {% if voucher.party.country %}{% if not voucher.buyerCountry %}<COUNTRYOFRESIDENCE>{{ voucher.party.country }}</COUNTRYOFRESIDENCE>{% endif %}<CONSIGNEECOUNTRYNAME>{{ voucher.party.country }}</CONSIGNEECOUNTRYNAME>{% endif %}
+            {% if voucher.party.trn and not voucher.buyerTrn %}<TRADERCONSVATTINNO>{{ voucher.party.trn }}</TRADERCONSVATTINNO>
+            <BASICBUYERSSALESTAXNO>{{ voucher.party.trn }}</BASICBUYERSSALESTAXNO>{% endif %}{% endif %}{% endif %}
             {% if voucher.voucherNumber %}<VOUCHERNUMBER>{{ voucher.voucherNumber }}</VOUCHERNUMBER>{% endif %}
             {% if voucher.reference %}<REFERENCE>{{ voucher.reference }}</REFERENCE>{% endif %}
             {% if voucher.referenceDate %}<REFERENCEDATE>{{ voucher.referenceDate }}</REFERENCEDATE>{% endif %}
@@ -20,10 +36,12 @@
             {% if voucher.placeOfSupplyEmirate %}<EMIRATEPOS>{{ voucher.placeOfSupplyEmirate }}</EMIRATEPOS>{% endif %}
             {% if voucher.placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ voucher.placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
             <NARRATION>{{ voucher.narration }}</NARRATION>
-            {% for entry in voucher.entries %}<ALLLEDGERENTRIES.LIST>
+            {% for entry in voucher.entries %}{% if voucher.isAccountingInvoice %}<LEDGERENTRIES.LIST>{% else %}<ALLLEDGERENTRIES.LIST>{% endif %}
               <LEDGERNAME>{{ entry.ledgerName }}</LEDGERNAME>
+              {% if entry.isPartyLedger %}<ISPARTYLEDGER>Yes</ISPARTYLEDGER>{% endif %}
               <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
               <AMOUNT>{{ entry.amount }}</AMOUNT>
+              {% if voucher.isAccountingInvoice and not entry.isPartyLedger %}<VATEXPAMOUNT>{{ entry.amount }}</VATEXPAMOUNT>{% endif %}
               {% if entry.description %}<UDF:USERDESCRIPTION.LIST DESC="`User Description`" ISLIST="YES" TYPE="String" INDEX="29">
                 {% for line in entry.description %}<UDF:USERDESCRIPTION DESC="`User Description`">{{ line }}</UDF:USERDESCRIPTION>
                 {% endfor %}
@@ -41,7 +59,7 @@
                   <AMOUNT>{{ entry.amount }}</AMOUNT>
                 </COSTCENTREALLOCATIONS.LIST>
               </CATEGORYALLOCATIONS.LIST>{% endif %}
-            </ALLLEDGERENTRIES.LIST>
+            {% if voucher.isAccountingInvoice %}</LEDGERENTRIES.LIST>{% else %}</ALLLEDGERENTRIES.LIST>{% endif %}
             {% endfor %}
           </VOUCHER>
         </TALLYMESSAGE>

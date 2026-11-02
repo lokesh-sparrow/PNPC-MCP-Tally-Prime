@@ -7,9 +7,25 @@
       </REQUESTDESC>
       <REQUESTDATA>
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <VOUCHER VCHTYPE="{{ voucherType }}" ACTION="Create">
+          <VOUCHER VCHTYPE="{{ voucherType }}" ACTION="Create"{% if isAccountingInvoice %} OBJVIEW="Invoice Voucher View"{% endif %}>
             <DATE>{{ tallyDate }}</DATE>
             <VOUCHERTYPENAME>{{ voucherType }}</VOUCHERTYPENAME>
+            {% if entryMode %}<PERSISTEDVIEW>{% if isAccountingInvoice %}Invoice Voucher View{% else %}Accounting Voucher View{% endif %}</PERSISTEDVIEW>
+            <VCHENTRYMODE>{{ entryMode }}</VCHENTRYMODE>
+            <ISINVOICE>{% if isAccountingInvoice %}Yes{% else %}No{% endif %}</ISINVOICE>{% endif %}
+            {% if isAccountingInvoice %}<PARTYNAME>{{ partyLedger }}</PARTYNAME>
+            <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            <BASICBASEPARTYNAME>{{ partyLedger }}</BASICBASEPARTYNAME>
+            {% if party %}<PARTYMAILINGNAME>{{ party.mailingName }}</PARTYMAILINGNAME>
+            <BASICBUYERNAME>{{ party.mailingName }}</BASICBUYERNAME>
+            <CONSIGNEEMAILINGNAME>{{ party.mailingName }}</CONSIGNEEMAILINGNAME>
+            {% if party.address %}<ADDRESS.LIST TYPE="String">{% for line in party.address %}<ADDRESS>{{ line }}</ADDRESS>{% endfor %}</ADDRESS.LIST>
+            <BASICBUYERADDRESS.LIST TYPE="String">{% for line in party.address %}<BASICBUYERADDRESS>{{ line }}</BASICBUYERADDRESS>{% endfor %}</BASICBUYERADDRESS.LIST>{% endif %}
+            {% if party.vatDealerType %}<VATDEALERTYPE>{{ party.vatDealerType }}</VATDEALERTYPE>{% endif %}
+            {% if party.state %}{% if not buyerState %}<STATENAME>{{ party.state }}</STATENAME>{% endif %}<CONSIGNEESTATENAME>{{ party.state }}</CONSIGNEESTATENAME>{% endif %}
+            {% if party.country %}{% if not buyerCountry %}<COUNTRYOFRESIDENCE>{{ party.country }}</COUNTRYOFRESIDENCE>{% endif %}<CONSIGNEECOUNTRYNAME>{{ party.country }}</CONSIGNEECOUNTRYNAME>{% endif %}
+            {% if party.trn and not buyerTrn %}<TRADERCONSVATTINNO>{{ party.trn }}</TRADERCONSVATTINNO>
+            <BASICBUYERSSALESTAXNO>{{ party.trn }}</BASICBUYERSSALESTAXNO>{% endif %}{% endif %}{% endif %}
             {% if voucherNumber %}<VOUCHERNUMBER>{{ voucherNumber }}</VOUCHERNUMBER>{% endif %}
             {% if reference %}<REFERENCE>{{ reference }}</REFERENCE>{% endif %}
             {% if referenceDate %}<REFERENCEDATE>{{ referenceDate }}</REFERENCEDATE>{% endif %}
@@ -20,10 +36,12 @@
             {% if placeOfSupplyEmirate %}<EMIRATEPOS>{{ placeOfSupplyEmirate }}</EMIRATEPOS>{% endif %}
             {% if placeOfSupplyCountry %}<PLACEOFSUPPLYCOUNTRY>{{ placeOfSupplyCountry }}</PLACEOFSUPPLYCOUNTRY>{% endif %}
             <NARRATION>{{ narration }}</NARRATION>
-            {% for entry in entries %}<ALLLEDGERENTRIES.LIST>
+            {% for entry in entries %}{% if isAccountingInvoice %}<LEDGERENTRIES.LIST>{% else %}<ALLLEDGERENTRIES.LIST>{% endif %}
               <LEDGERNAME>{{ entry.ledgerName }}</LEDGERNAME>
+              {% if entry.isPartyLedger %}<ISPARTYLEDGER>Yes</ISPARTYLEDGER>{% endif %}
               <ISDEEMEDPOSITIVE>{{ entry.isDeemedPositive }}</ISDEEMEDPOSITIVE>
               <AMOUNT>{{ entry.amount }}</AMOUNT>
+              {% if isAccountingInvoice and not entry.isPartyLedger %}<VATEXPAMOUNT>{{ entry.amount }}</VATEXPAMOUNT>{% endif %}
               {% if entry.description %}<UDF:USERDESCRIPTION.LIST DESC="`User Description`" ISLIST="YES" TYPE="String" INDEX="29">
                 {% for line in entry.description %}<UDF:USERDESCRIPTION DESC="`User Description`">{{ line }}</UDF:USERDESCRIPTION>
                 {% endfor %}
@@ -41,7 +59,7 @@
                   <AMOUNT>{{ entry.amount }}</AMOUNT>
                 </COSTCENTREALLOCATIONS.LIST>
               </CATEGORYALLOCATIONS.LIST>{% endif %}
-            </ALLLEDGERENTRIES.LIST>
+            {% if isAccountingInvoice %}</LEDGERENTRIES.LIST>{% else %}</ALLLEDGERENTRIES.LIST>{% endif %}
             {% endfor %}
           </VOUCHER>
         </TALLYMESSAGE>

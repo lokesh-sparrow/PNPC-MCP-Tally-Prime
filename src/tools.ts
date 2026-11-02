@@ -570,6 +570,8 @@ export const tools = [
         },
         placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country (Tally's PLACEOFSUPPLYCOUNTRY field), e.g. 'UAE'." },
         narration: { type: "string", description: "Narration / description for the voucher" },
+        mode: { type: "string", enum: ["As Voucher", "Accounting Invoice"], description: "Tally's voucher entry mode (the 'Change Voucher Mode' choice in the voucher screen). 'Accounting Invoice' posts it as an invoice with plain ledger lines, the way invoice-mode Tax Invoices are entered — partyLedger is then required. 'As Voucher' posts the normal Dr/Cr voucher view and records that mode. Omit to post the normal voucher view without stamping a mode (right for Payment, Receipt, Contra). For Item Invoice (stock lines) use create_sales_invoice and its siblings instead." },
+        partyLedger: { type: "string", description: "The customer or supplier ledger the invoice is raised on — required with mode 'Accounting Invoice', and must be one of this voucher's own ledger lines (it's placed first and marked as the party, as Tally does)." },
         debitLedger: { type: "string", description: "Ledger name to debit (simple 2-leg mode; omit if using 'entries')" },
         creditLedger: { type: "string", description: "Ledger name to credit (simple 2-leg mode; omit if using 'entries')" },
         amount: { type: "number", description: "Amount of the transaction (simple 2-leg mode; omit if using 'entries')" },
@@ -665,6 +667,8 @@ export const tools = [
               reference: { type: "string", description: "Free-text reference (Tally's voucher-level REFERENCE field)." },
               referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
               narration: { type: "string", description: "Required and must be non-empty — the key this tool uses to confirm a voucher posted. Must be unique per voucherType across the batch." },
+              mode: { type: "string", enum: ["As Voucher", "Accounting Invoice"], description: "Tally's voucher entry mode (the 'Change Voucher Mode' choice in the voucher screen). 'Accounting Invoice' posts it as an invoice with plain ledger lines, the way invoice-mode Tax Invoices are entered — partyLedger is then required. 'As Voucher' posts the normal Dr/Cr voucher view and records that mode. Omit to post the normal voucher view without stamping a mode (right for Payment, Receipt, Contra). For Item Invoice (stock lines) use create_sales_invoice and its siblings instead." },
+              partyLedger: { type: "string", description: "The customer or supplier ledger the invoice is raised on — required with mode 'Accounting Invoice', and must be one of this voucher's own ledger lines (it's placed first and marked as the party, as Tally does)." },
               debitLedger: { type: "string", description: "Ledger to debit (simple 2-leg mode; omit if using 'entries')" },
               creditLedger: { type: "string", description: "Ledger to credit (simple 2-leg mode; omit if using 'entries')" },
               amount: { type: "number", description: "Amount (simple 2-leg mode; omit if using 'entries')" },
@@ -1270,6 +1274,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type to post as, for a company that uses its own Sales-class type in Item Invoice mode (e.g. 'Tax Invoice', 'Export Invoice'). Defaults to 'Sales'." },
         date: { type: "string", description: "Invoice date in DD-MM-YYYY format" },
         narration: { type: "string", description: "Narration / description for the invoice" },
         partyLedger: { type: "string", description: "Customer ledger name (the party being invoiced)" },
@@ -1280,6 +1285,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string", description: "Exact name of the stock item" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number", description: "Quantity" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos' — must match the stock item's unit" },
@@ -1364,6 +1370,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type of the existing voucher, if it isn't the default 'Sales' (e.g. 'Tax Invoice'). Used to find it and to check no other voucher shares its number." },
         voucherNumber: { type: "string", description: "Exact voucher number of the invoice to update" },
         date: { type: "string", description: "Existing invoice's date in DD-MM-YYYY format" },
         narration: { type: "string", description: "New narration / description for the invoice" },
@@ -1375,6 +1382,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number" },
               rate: { type: "number" },
               unit: { type: "string" },
@@ -1415,6 +1423,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type to post as, for a company that uses its own Purchase-class type in Item Invoice mode (e.g. 'Tax Invoice', 'Export Invoice'). Defaults to 'Purchase'." },
         date: { type: "string", description: "Invoice date in DD-MM-YYYY format" },
         narration: { type: "string", description: "Narration / description for the invoice" },
         partyLedger: { type: "string", description: "Supplier ledger name (the party being paid)" },
@@ -1425,6 +1434,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string", description: "Exact name of the stock item" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number", description: "Quantity" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string", description: "Unit of measure, e.g. 'Nos' — must match the stock item's unit" },
@@ -1508,6 +1518,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type of the existing voucher, if it isn't the default 'Purchase' (e.g. 'Tax Invoice'). Used to find it and to check no other voucher shares its number." },
         voucherNumber: { type: "string", description: "Exact voucher number of the invoice to update" },
         date: { type: "string", description: "Existing invoice's date in DD-MM-YYYY format" },
         narration: { type: "string", description: "New narration / description for the invoice" },
@@ -1519,6 +1530,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number" },
               rate: { type: "number" },
               unit: { type: "string" },
@@ -1559,6 +1571,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type to post as, for a company that uses its own Credit Note-class type in Item Invoice mode (e.g. 'Tax Invoice', 'Export Invoice'). Defaults to 'Credit Note'." },
         date: { type: "string", description: "Credit note date in DD-MM-YYYY format" },
         narration: { type: "string", description: "Narration / description" },
         partyLedger: { type: "string", description: "Customer ledger name (the party being credited)" },
@@ -1569,6 +1582,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number", description: "Quantity returned" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
@@ -1616,6 +1630,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type of the existing voucher, if it isn't the default 'Credit Note' (e.g. 'Tax Invoice'). Used to find it and to check no other voucher shares its number." },
         date: { type: "string", description: "Existing credit note's date in DD-MM-YYYY format" },
         voucherNumber: { type: "string", description: "Exact voucher number of the credit note to update" },
         narration: { type: "string", description: "Narration / description" },
@@ -1627,6 +1642,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number", description: "Quantity returned" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
@@ -1666,6 +1682,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type to post as, for a company that uses its own Debit Note-class type in Item Invoice mode (e.g. 'Tax Invoice', 'Export Invoice'). Defaults to 'Debit Note'." },
         date: { type: "string", description: "Debit note date in DD-MM-YYYY format" },
         narration: { type: "string", description: "Narration / description" },
         partyLedger: { type: "string", description: "Supplier ledger name (the party being debited)" },
@@ -1676,6 +1693,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number", description: "Quantity returned" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
@@ -1724,6 +1742,7 @@ export const tools = [
     inputSchema: {
       type: "object",
       properties: {
+        voucherType: { type: "string", description: "Voucher type of the existing voucher, if it isn't the default 'Debit Note' (e.g. 'Tax Invoice'). Used to find it and to check no other voucher shares its number." },
         date: { type: "string", description: "Existing debit note's date in DD-MM-YYYY format" },
         voucherNumber: { type: "string", description: "Exact voucher number of the debit note to update" },
         narration: { type: "string", description: "Narration / description" },
@@ -1735,6 +1754,7 @@ export const tools = [
             type: "object",
             properties: {
               stockItem: { type: "string", description: "Exact name of the stock item being returned" },
+              description: { type: "array", items: { type: "string" }, description: "Description lines shown under this stock line on the invoice, one array entry per line (e.g. a size, colour or service period). Optional." },
               qty: { type: "number", description: "Quantity returned" },
               rate: { type: "number", description: "Rate per unit" },
               unit: { type: "string" },
@@ -2825,6 +2845,8 @@ export const tools = [
         placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this voucher." },
         placeOfSupplyCountry: { type: "string", description: "UAE VAT Place of Supply Country for this voucher." },
         narration: { type: "string", description: "New narration / description for the voucher" },
+        mode: { type: "string", enum: ["As Voucher", "Accounting Invoice"], description: "Tally's voucher entry mode (the 'Change Voucher Mode' choice in the voucher screen). 'Accounting Invoice' posts it as an invoice with plain ledger lines, the way invoice-mode Tax Invoices are entered — partyLedger is then required. 'As Voucher' posts the normal Dr/Cr voucher view and records that mode. Omit to post the normal voucher view without stamping a mode (right for Payment, Receipt, Contra). For Item Invoice (stock lines) use create_sales_invoice and its siblings instead." },
+        partyLedger: { type: "string", description: "The customer or supplier ledger the invoice is raised on — required with mode 'Accounting Invoice', and must be one of this voucher's own ledger lines (it's placed first and marked as the party, as Tally does)." },
         debitLedger: { type: "string", description: "Ledger name to debit (simple 2-leg mode; omit if using 'entries')" },
         creditLedger: { type: "string", description: "Ledger name to credit (simple 2-leg mode; omit if using 'entries')" },
         amount: { type: "number", description: "New amount of the transaction (simple 2-leg mode; omit if using 'entries')" },
@@ -3320,6 +3342,98 @@ function buildVoucherEntries(args: {
   ];
 }
 
+// TallyPrime's "Change Voucher Mode" for an accounting voucher (Ctrl+H in the
+// voucher screen). Left unset, the voucher goes in exactly as before — plain
+// voucher view with no mode stamped, which is what Payments/Receipts expect.
+// "Accounting Invoice" reproduces Tally's own invoice-mode vouchers, read
+// back live from a real one: invoice view, ISINVOICE=Yes, the party named at
+// voucher level, the party line first and flagged, and every line under
+// LEDGERENTRIES.LIST instead of ALLLEDGERENTRIES.LIST. Item Invoice needs
+// stock lines, so it stays with create_sales_invoice and its siblings.
+function applyVoucherMode<E extends { ledgerName: string }>(
+  entries: E[],
+  mode: string | undefined,
+  partyLedger: string | undefined
+) {
+  if (!mode) {
+    if (partyLedger) throw new Error("partyLedger only applies with mode 'Accounting Invoice'.");
+    return { entryMode: undefined, isAccountingInvoice: false, partyLedger: undefined, entries };
+  }
+  if (mode === "Item Invoice") {
+    throw new Error(
+      "Item Invoice mode needs stock item lines — use create_sales_invoice, create_purchase_invoice, " +
+        "create_credit_note or create_debit_note (each takes your own voucherType, e.g. 'Tax Invoice')."
+    );
+  }
+  if (mode === "As Voucher") {
+    if (partyLedger) throw new Error("partyLedger only applies with mode 'Accounting Invoice'.");
+    return { entryMode: mode, isAccountingInvoice: false, partyLedger: undefined, entries };
+  }
+  if (mode !== "Accounting Invoice") {
+    throw new Error(`mode must be 'As Voucher' or 'Accounting Invoice' (got '${mode}').`);
+  }
+  if (!partyLedger) {
+    throw new Error("mode 'Accounting Invoice' needs partyLedger — the customer or supplier ledger the invoice is raised on.");
+  }
+  const partyIndex = entries.findIndex((e) => e.ledgerName === partyLedger);
+  if (partyIndex < 0) {
+    throw new Error(`partyLedger '${partyLedger}' must be one of this voucher's own ledger lines.`);
+  }
+  const ordered = [
+    { ...entries[partyIndex], isPartyLedger: true },
+    ...entries.filter((_, i) => i !== partyIndex),
+  ];
+  return { entryMode: mode, isAccountingInvoice: true, partyLedger, entries: ordered };
+}
+
+type PartyDetails = {
+  mailingName: string;
+  address?: string[];
+  state?: string;
+  country?: string;
+  vatDealerType?: string;
+  trn?: string;
+};
+
+// When an invoice is entered by hand in Accounting Invoice mode, Tally copies
+// the party's details from its ledger onto the voucher. An import doesn't —
+// confirmed live: a test invoice came back with no buyer name, address,
+// state or dealer type. So read them from the ledger here. The TRN is only
+// copied for a Regular (VAT-registered) party, matching every real invoice
+// checked (307 of them: never on an Unregistered party's invoice).
+async function resolvePartyDetails(mode: string | undefined, partyLedger: string | undefined): Promise<PartyDetails | undefined> {
+  if (mode !== "Accounting Invoice" || !partyLedger) return undefined;
+  const xml = buildCollectionXml(
+    "Ledger",
+    [
+      { name: "NAME" },
+      { name: "MAILINGNAME" },
+      { name: "ADDRESS", expression: 'if $$IsEmpty:$Address then "" else $$FullListEx:"|":Address:$Address' },
+      { name: "STATE", expression: "$LedStateName" },
+      { name: "COUNTRY", expression: "$CountryName" },
+      { name: "VATDEALERTYPE", expression: 'if $$IsEmpty:$VATDealerType then "" else $VATDealerType' },
+      { name: "TRN", expression: 'if $$IsEmpty:$VATTINNumber then "" else $VATTINNumber' },
+    ],
+    [{ name: "FilterName", expression: `$$IsEqual:$Name:"${partyLedger.replace(/"/g, '""')}"` }]
+  );
+  const rows = extractRecords(await tallyRequest(xml)) as Record<string, unknown>[];
+  if (rows.length === 0) {
+    throw new Error(`partyLedger '${partyLedger}' was not found in Tally — check the ledger name.`);
+  }
+  const text = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
+  const row = rows[0];
+  const address = text(row.ADDRESS).split("|").map((l) => l.trim()).filter((l) => l.length > 0);
+  const vatDealerType = text(row.VATDEALERTYPE) || undefined;
+  return {
+    mailingName: text(row.MAILINGNAME) || partyLedger,
+    address: address.length > 0 ? address : undefined,
+    state: text(row.STATE) || undefined,
+    country: text(row.COUNTRY) || undefined,
+    vatDealerType,
+    trn: vatDealerType === "Regular" ? text(row.TRN) || undefined : undefined,
+  };
+}
+
 function createVoucherXml(args: {
   voucherType: string;
   date: string;
@@ -3345,9 +3459,14 @@ function createVoucherXml(args: {
   buyerCountry?: string;
   placeOfSupplyEmirate?: string;
   placeOfSupplyCountry?: string;
+  mode?: string;
+  partyLedger?: string;
+  partyDetails?: PartyDetails;
 }): string {
-  const entries = buildVoucherEntries(args);
+  const voucherMode = applyVoucherMode(buildVoucherEntries(args), args.mode, args.partyLedger);
   return render("create-voucher.xml.njk", {
+    ...voucherMode,
+    party: args.partyDetails,
     voucherType: args.voucherType,
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3359,7 +3478,6 @@ function createVoucherXml(args: {
     buyerCountry: args.buyerCountry,
     placeOfSupplyEmirate: args.placeOfSupplyEmirate,
     placeOfSupplyCountry: args.placeOfSupplyCountry,
-    entries,
   });
 }
 
@@ -3397,6 +3515,9 @@ type VoucherBatchItem = {
   buyerCountry?: string;
   placeOfSupplyEmirate?: string;
   placeOfSupplyCountry?: string;
+  mode?: string;
+  partyLedger?: string;
+  partyDetails?: PartyDetails;
 };
 
 // Validates and shapes one batch item without sending anything — split out
@@ -3417,6 +3538,8 @@ function buildVoucherBatchEntry(v: VoucherBatchItem) {
     throw new Error("narration is required and must be non-empty for create_vouchers_batch — it's the only field this can reliably verify a posted voucher by.");
   }
   return {
+    ...applyVoucherMode(buildVoucherEntries(v), v.mode, v.partyLedger),
+    party: v.partyDetails,
     voucherType: v.voucherType,
     tallyDate: v.date.split("-").reverse().join(""),
     voucherNumber: v.voucherNumber,
@@ -3428,7 +3551,6 @@ function buildVoucherBatchEntry(v: VoucherBatchItem) {
     buyerCountry: v.buyerCountry,
     placeOfSupplyEmirate: v.placeOfSupplyEmirate,
     placeOfSupplyCountry: v.placeOfSupplyCountry,
-    entries: buildVoucherEntries(v),
   };
 }
 
@@ -4100,6 +4222,9 @@ type InvoiceItemInput = {
   discountPercent?: number;
   vatLedger?: string;
   vatRatePercent?: number;
+  // Description lines shown under this stock line on the invoice (Tally's
+  // BASICUSERDESCRIPTION list), one array entry per line.
+  description?: string[];
 };
 
 async function computeInvoiceLines(
@@ -4122,6 +4247,7 @@ async function computeInvoiceLines(
     const discounted = item.discountPercent ? gross * (1 - item.discountPercent / 100) : gross;
     return {
       ...item,
+      description: cleanDescription(item.description),
       amount: Math.round(discounted * 100) / 100,
       batchName: item.batchName ?? "Primary Batch",
     };
@@ -4150,6 +4276,7 @@ async function computeInvoiceLines(
 }
 
 async function createSalesInvoiceXml(args: {
+  voucherType?: string;
   date: string;
   narration?: string;
   partyLedger: string;
@@ -4169,6 +4296,7 @@ async function createSalesInvoiceXml(args: {
 }): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-sales-invoice.xml.njk", {
+    voucherType: args.voucherType ?? "Sales",
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
@@ -4189,6 +4317,7 @@ async function createSalesInvoiceXml(args: {
 }
 
 async function createPurchaseInvoiceXml(args: {
+  voucherType?: string;
   date: string;
   narration?: string;
   partyLedger: string;
@@ -4209,6 +4338,7 @@ async function createPurchaseInvoiceXml(args: {
 }): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-purchase-invoice.xml.njk", {
+    voucherType: args.voucherType ?? "Purchase",
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
@@ -4230,6 +4360,7 @@ async function createPurchaseInvoiceXml(args: {
 }
 
 async function createCreditNoteXml(args: {
+  voucherType?: string;
   date: string;
   narration?: string;
   partyLedger: string;
@@ -4249,6 +4380,7 @@ async function createCreditNoteXml(args: {
 }): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-credit-note.xml.njk", {
+    voucherType: args.voucherType ?? "Credit Note",
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
@@ -4269,6 +4401,7 @@ async function createCreditNoteXml(args: {
 }
 
 async function createDebitNoteXml(args: {
+  voucherType?: string;
   date: string;
   narration?: string;
   partyLedger: string;
@@ -4289,6 +4422,7 @@ async function createDebitNoteXml(args: {
 }): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("create-debit-note.xml.njk", {
+    voucherType: args.voucherType ?? "Debit Note",
     tallyDate: args.date.split("-").reverse().join(""),
     narration: args.narration ?? "",
     partyLedger: args.partyLedger,
@@ -4314,6 +4448,7 @@ async function updateSalesInvoiceXml(
 ): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-sales-invoice.xml.njk", {
+    voucherType: args.voucherType ?? "Sales",
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
@@ -4338,6 +4473,7 @@ async function updatePurchaseInvoiceXml(
 ): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-purchase-invoice.xml.njk", {
+    voucherType: args.voucherType ?? "Purchase",
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
@@ -4363,6 +4499,7 @@ async function updateCreditNoteXml(
 ): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-credit-note.xml.njk", {
+    voucherType: args.voucherType ?? "Credit Note",
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
@@ -4387,6 +4524,7 @@ async function updateDebitNoteXml(
 ): Promise<string> {
   const { items, taxGroups, partyAmount } = await computeInvoiceLines(args.items, args.vatLedger, args.vatRatePercent);
   return render("update-debit-note.xml.njk", {
+    voucherType: args.voucherType ?? "Debit Note",
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
     narration: args.narration ?? "",
@@ -4574,9 +4712,14 @@ function updateVoucherXml(args: {
   buyerCountry?: string;
   placeOfSupplyEmirate?: string;
   placeOfSupplyCountry?: string;
+  mode?: string;
+  partyLedger?: string;
+  partyDetails?: PartyDetails;
 }): string {
-  const entries = buildVoucherEntries(args);
+  const voucherMode = applyVoucherMode(buildVoucherEntries(args), args.mode, args.partyLedger);
   return render("update-voucher.xml.njk", {
+    ...voucherMode,
+    party: args.partyDetails,
     voucherType: args.voucherType,
     voucherNumber: args.voucherNumber,
     reference: args.reference,
@@ -4588,7 +4731,6 @@ function updateVoucherXml(args: {
     buyerCountry: args.buyerCountry,
     placeOfSupplyEmirate: args.placeOfSupplyEmirate,
     placeOfSupplyCountry: args.placeOfSupplyCountry,
-    entries,
   });
 }
 
@@ -5061,26 +5203,26 @@ async function buildWriteXml(toolName: string, args: Record<string, unknown>): P
     case "delete_master":
       return deleteMasterXml(String(a.collection).toUpperCase(), a.names);
     case "create_voucher":
-      return createVoucherXml(a);
+      return createVoucherXml({ ...a, partyDetails: await resolvePartyDetails(a.mode, a.partyLedger) });
     case "create_sales_invoice":
       return createSalesInvoiceXml(a);
     case "update_sales_invoice":
-      await assertVoucherUnambiguous("Sales", a.voucherNumber, a.date);
+      await assertVoucherUnambiguous(a.voucherType ?? "Sales", a.voucherNumber, a.date);
       return updateSalesInvoiceXml(a);
     case "create_purchase_invoice":
       return createPurchaseInvoiceXml(a);
     case "update_purchase_invoice":
-      await assertVoucherUnambiguous("Purchase", a.voucherNumber, a.date);
+      await assertVoucherUnambiguous(a.voucherType ?? "Purchase", a.voucherNumber, a.date);
       return updatePurchaseInvoiceXml(a);
     case "create_credit_note":
       return createCreditNoteXml(a);
     case "update_credit_note":
-      await assertVoucherUnambiguous("Credit Note", a.voucherNumber, a.date);
+      await assertVoucherUnambiguous(a.voucherType ?? "Credit Note", a.voucherNumber, a.date);
       return updateCreditNoteXml(a);
     case "create_debit_note":
       return createDebitNoteXml(a);
     case "update_debit_note":
-      await assertVoucherUnambiguous("Debit Note", a.voucherNumber, a.date);
+      await assertVoucherUnambiguous(a.voucherType ?? "Debit Note", a.voucherNumber, a.date);
       return updateDebitNoteXml(a);
     case "create_delivery_note":
       return createDeliveryNoteXml(a);
@@ -5178,7 +5320,7 @@ async function buildWriteXml(toolName: string, args: Record<string, unknown>): P
       return setBillOfMaterialsXml(a);
     case "update_voucher":
       await assertVoucherUnambiguous(a.voucherType, a.voucherNumber, a.date);
-      return updateVoucherXml(a);
+      return updateVoucherXml({ ...a, partyDetails: await resolvePartyDetails(a.mode, a.partyLedger) });
     case "delete_voucher":
       await assertVoucherUnambiguous(a.voucherType, a.voucherNumber, a.date);
       return deleteVoucherXml(a.voucherType, a.voucherNumber, a.date);
@@ -5843,8 +5985,13 @@ export async function handleTool(
         buyerCountry?: string;
         placeOfSupplyEmirate?: string;
         placeOfSupplyCountry?: string;
+        mode?: string;
+        partyLedger?: string;
       };
-      const xml = createVoucherXml(voucherArgs);
+      const xml = createVoucherXml({
+        ...voucherArgs,
+        partyDetails: await resolvePartyDetails(voucherArgs.mode, voucherArgs.partyLedger),
+      });
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date)
@@ -5861,9 +6008,18 @@ export async function handleTool(
       // generation for its whole chunk.
       let valid: { item: VoucherBatchItem; entry: ReturnType<typeof buildVoucherBatchEntry> }[] = [];
       const invalid: { item: VoucherBatchItem; reason: string }[] = [];
+      // Each Accounting Invoice party is looked up once, however many vouchers use it.
+      const partyCache = new Map<string, Promise<PartyDetails | undefined>>();
       for (const item of vouchers) {
         try {
-          valid.push({ item, entry: buildVoucherBatchEntry(item) });
+          let partyDetails: PartyDetails | undefined;
+          if (item.mode === "Accounting Invoice" && item.partyLedger) {
+            if (!partyCache.has(item.partyLedger)) {
+              partyCache.set(item.partyLedger, resolvePartyDetails(item.mode, item.partyLedger));
+            }
+            partyDetails = await partyCache.get(item.partyLedger)!;
+          }
+          valid.push({ item, entry: buildVoucherBatchEntry({ ...item, partyDetails }) });
         } catch (err) {
           invalid.push({ item, reason: err instanceof Error ? err.message : String(err) });
         }
@@ -5947,60 +6103,60 @@ export async function handleTool(
       const invoiceArgs = args as Parameters<typeof createSalesInvoiceXml>[0];
       const xml = await createSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(invoiceArgs.voucherType ?? "Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "update_sales_invoice": {
       const invoiceArgs = args as Parameters<typeof updateSalesInvoiceXml>[0];
-      await assertVoucherUnambiguous("Sales", invoiceArgs.voucherNumber, invoiceArgs.date);
+      await assertVoucherUnambiguous(invoiceArgs.voucherType ?? "Sales", invoiceArgs.voucherNumber, invoiceArgs.date);
       const xml = await updateSalesInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(invoiceArgs.voucherType ?? "Sales", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "create_purchase_invoice": {
       const invoiceArgs = args as Parameters<typeof createPurchaseInvoiceXml>[0];
       const xml = await createPurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(invoiceArgs.voucherType ?? "Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "update_purchase_invoice": {
       const invoiceArgs = args as Parameters<typeof updatePurchaseInvoiceXml>[0];
-      await assertVoucherUnambiguous("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date);
+      await assertVoucherUnambiguous(invoiceArgs.voucherType ?? "Purchase", invoiceArgs.voucherNumber, invoiceArgs.date);
       const xml = await updatePurchaseInvoiceXml(invoiceArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(invoiceArgs.voucherType ?? "Purchase", invoiceArgs.voucherNumber, invoiceArgs.date));
     }
 
     case "create_credit_note": {
       const noteArgs = args as Parameters<typeof createCreditNoteXml>[0];
       const xml = await createCreditNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Credit Note", noteArgs.voucherNumber, noteArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(noteArgs.voucherType ?? "Credit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "update_credit_note": {
       const noteArgs = args as Parameters<typeof updateCreditNoteXml>[0];
-      await assertVoucherUnambiguous("Credit Note", noteArgs.voucherNumber, noteArgs.date);
+      await assertVoucherUnambiguous(noteArgs.voucherType ?? "Credit Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = await updateCreditNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Credit Note", noteArgs.voucherNumber, noteArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(noteArgs.voucherType ?? "Credit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_debit_note": {
       const noteArgs = args as Parameters<typeof createDebitNoteXml>[0];
       const xml = await createDebitNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Debit Note", noteArgs.voucherNumber, noteArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(noteArgs.voucherType ?? "Debit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "update_debit_note": {
       const noteArgs = args as Parameters<typeof updateDebitNoteXml>[0];
-      await assertVoucherUnambiguous("Debit Note", noteArgs.voucherNumber, noteArgs.date);
+      await assertVoucherUnambiguous(noteArgs.voucherType ?? "Debit Note", noteArgs.voucherNumber, noteArgs.date);
       const xml = await updateDebitNoteXml(noteArgs);
       const result = await tallyRequest(xml);
-      return checkImportResult(result, () => verifyVoucherWrite("Debit Note", noteArgs.voucherNumber, noteArgs.date));
+      return checkImportResult(result, () => verifyVoucherWrite(noteArgs.voucherType ?? "Debit Note", noteArgs.voucherNumber, noteArgs.date));
     }
 
     case "create_delivery_note": {
@@ -6400,9 +6556,14 @@ export async function handleTool(
         buyerCountry?: string;
         placeOfSupplyEmirate?: string;
         placeOfSupplyCountry?: string;
+        mode?: string;
+        partyLedger?: string;
       };
       await assertVoucherUnambiguous(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date);
-      const xml = updateVoucherXml(voucherArgs);
+      const xml = updateVoucherXml({
+        ...voucherArgs,
+        partyDetails: await resolvePartyDetails(voucherArgs.mode, voucherArgs.partyLedger),
+      });
       const result = await tallyRequest(xml);
       return checkImportResult(result, () =>
         verifyVoucherWrite(voucherArgs.voucherType, voucherArgs.voucherNumber, voucherArgs.date)
