@@ -45,14 +45,18 @@ Get the latest release — no cloning or building required:
 | Claude web (claude.ai) | — | ✔️ |
 | ChatGPT (Developer Mode) | — | ✔️ |
 | Grok (SuperGrok / X Premium+) | — | ✔️ |
+| OpenCode Desktop (includes free models) | ✔️ | — |
 
 (Remote/cloud deployment runs via the HTTP entry point, confirmed live
 against all three remote clients above — see
 [docs/HTTP_DEPLOYMENT.md](docs/HTTP_DEPLOYMENT.md) and
 [docs/OAUTH_CONNECTORS.md](docs/OAUTH_CONNECTORS.md). Local is still the
-simpler, recommended path if you're only using Claude Desktop. Claude Desktop is the only
-client here with a local/no-network install option (the `.mcpb`
-extension); claude.ai, ChatGPT, and Grok all connect only to remote HTTPS
+simpler, recommended path if you're only using Claude Desktop. Claude Desktop and
+OpenCode Desktop both run the server locally on your PC — Claude Desktop through
+the one-click `.mcpb` extension, OpenCode Desktop through a short config file
+(see [OpenCode Desktop](#opencode-desktop) below). OpenCode Desktop also offers
+free models, so the connector can be used without a paid AI subscription.
+claude.ai, ChatGPT, and Grok all connect only to remote HTTPS
 MCP endpoints — none of them can run a local stdio server on your PC the
 way Claude Desktop does, so remote deployment is the only path into any
 of them.)
@@ -98,6 +102,37 @@ pointing at the built server directly. First clone this repo and run
 ```
 (Use double backslashes in the path, as shown.) Where this config file
 lives, and how to reload it, depends on the client — check its own docs.
+
+### OpenCode Desktop
+
+OpenCode Desktop works with this connector, including with its free models.
+Build the server first as above, then add this to OpenCode's config file —
+`C:\Users\<you>\.config\opencode\opencode.json` on Windows — and restart
+OpenCode Desktop:
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "tally": {
+        "type": "local",
+        "command": [
+          "node",
+          "D:\Path\To\PNPC-MCP-Tally-Prime\dist\index.js"
+        ],
+        "cwd": "D:\Path\To\PNPC-MCP-Tally-Prime",
+        "environment": {
+          "TALLY_URL": "http://localhost:9000"
+        }
+      }
+    }
+  }
+}
+```
+If `node` isn't on your PATH, put the full path to `node.exe` in place of
+`node`. Writes are allowed by default in this setup — add
+`"TALLY_READ_ONLY": "true"` under `environment` to keep it read-only (see
+[Environment variables](#environment-variables)).
 
 ## Setup (Cloud)
 
