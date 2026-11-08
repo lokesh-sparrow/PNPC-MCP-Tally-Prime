@@ -18,6 +18,8 @@
             <NARRATION>{{ narration }}</NARRATION>
             <PARTYNAME>{{ partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
+            {% if buyerName %}<PARTYMAILINGNAME>{{ buyerName }}</PARTYMAILINGNAME>
+            {% endif %}
             {% if buyerTrn %}<TRADERCONSVATTINNO>{{ buyerTrn }}</TRADERCONSVATTINNO>
             <BASICBUYERSSALESTAXNO>{{ buyerTrn }}</BASICBUYERSSALESTAXNO>{% endif %}
             {% if buyerState %}<STATENAME>{{ buyerState }}</STATENAME>{% endif %}

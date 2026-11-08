@@ -15,7 +15,7 @@
             {% if isAccountingInvoice %}<PARTYNAME>{{ partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ partyLedger }}</PARTYLEDGERNAME>
             <BASICBASEPARTYNAME>{{ partyLedger }}</BASICBASEPARTYNAME>
-            {% if party %}<PARTYMAILINGNAME>{{ party.mailingName }}</PARTYMAILINGNAME>
+            {% if party %}<PARTYMAILINGNAME>{{ buyerName or party.mailingName }}</PARTYMAILINGNAME>
             <BASICBUYERNAME>{{ party.mailingName }}</BASICBUYERNAME>
             <CONSIGNEEMAILINGNAME>{{ party.mailingName }}</CONSIGNEEMAILINGNAME>
             {% if party.address %}<ADDRESS.LIST TYPE="String">{% for line in party.address %}<ADDRESS>{{ line }}</ADDRESS>{% endfor %}</ADDRESS.LIST>
@@ -25,6 +25,8 @@
             {% if party.country %}{% if not buyerCountry %}<COUNTRYOFRESIDENCE>{{ party.country }}</COUNTRYOFRESIDENCE>{% endif %}<CONSIGNEECOUNTRYNAME>{{ party.country }}</CONSIGNEECOUNTRYNAME>{% endif %}
             {% if party.trn and not buyerTrn %}<TRADERCONSVATTINNO>{{ party.trn }}</TRADERCONSVATTINNO>
             <BASICBUYERSSALESTAXNO>{{ party.trn }}</BASICBUYERSSALESTAXNO>{% endif %}{% endif %}{% endif %}
+            {% if buyerName and not isAccountingInvoice %}<PARTYMAILINGNAME>{{ buyerName }}</PARTYMAILINGNAME>
+            {% endif %}
             {% if reference %}<REFERENCE>{{ reference }}</REFERENCE>{% endif %}
             {% if referenceDate %}<REFERENCEDATE>{{ referenceDate }}</REFERENCEDATE>{% endif %}
             {% if buyerTrn %}<TRADERCONSVATTINNO>{{ buyerTrn }}</TRADERCONSVATTINNO>

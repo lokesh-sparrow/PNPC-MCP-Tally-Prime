@@ -556,6 +556,7 @@ export const tools = [
             "Purchase-class voucher the buyer is your own company instead, which this generic field does not " +
             "distinguish — use create_purchase_invoice's separate buyerTrn/supplierTrn for that case.",
         },
+        buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
         buyerState: {
           type: "string",
           description: "The buyer's Emirate/state on this voucher's Party Details (voucher-level STATENAME) — same Sales-class caveat as buyerTrn.",
@@ -700,6 +701,7 @@ export const tools = [
                 },
               },
               buyerTrn: { type: "string", description: "Buyer's TRN, Sales-class vouchers only — see create_voucher." },
+              buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
               buyerState: { type: "string", description: "Buyer's Emirate/state, Sales-class vouchers only." },
               buyerCountry: { type: "string", description: "Buyer's country, Sales-class vouchers only." },
               placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate." },
@@ -1335,6 +1337,7 @@ export const tools = [
             "this unset is exactly what leaves the invoice's Party Details showing a blank TRN even when the " +
             "party ledger has one set — always pass this explicitly for a UAE VAT tax invoice.",
         },
+        buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
         buyerState: {
           type: "string",
           description:
@@ -1403,6 +1406,7 @@ export const tools = [
         reference: { type: "string", description: "Free-text reference for this invoice (Tally's voucher-level REFERENCE field)." },
         referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
         buyerTrn: { type: "string", description: "The buyer's TRN as it should appear on this invoice — same voucher-level snapshot field as create_sales_invoice's buyerTrn." },
+        buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
         buyerState: { type: "string", description: "The buyer's Emirate/state as it should appear on this invoice's Party Details." },
         buyerCountry: { type: "string", description: "The buyer's country as it should appear on this invoice's Party Details." },
         placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this invoice." },
@@ -1611,6 +1615,7 @@ export const tools = [
         reference: { type: "string", description: "Free-text reference for this credit note (Tally's voucher-level REFERENCE field)." },
         referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
         buyerTrn: { type: "string", description: "The buyer's (customer's) TRN as it should appear on this credit note (Tally's TRADERCONSVATTINNO/BASICBUYERSSALESTAXNO fields) — a per-voucher snapshot, not inherited from the party ledger master." },
+        buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
         buyerState: { type: "string", description: "The buyer's Emirate/state on this credit note's Party Details (voucher-level STATENAME)." },
         buyerCountry: { type: "string", description: "The buyer's country on this credit note's Party Details (voucher-level COUNTRYOFRESIDENCE)." },
         placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this credit note (Tally's EMIRATEPOS field)." },
@@ -1663,6 +1668,7 @@ export const tools = [
         reference: { type: "string", description: "Free-text reference for this credit note." },
         referenceDate: { type: "string", description: "Date for the reference above, in DD-MM-YYYY format." },
         buyerTrn: { type: "string", description: "The buyer's TRN on this credit note — same voucher-level field as create_credit_note's buyerTrn." },
+        buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
         buyerState: { type: "string", description: "The buyer's Emirate/state on this credit note's Party Details." },
         buyerCountry: { type: "string", description: "The buyer's country on this credit note's Party Details." },
         placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this credit note." },
@@ -2840,6 +2846,7 @@ export const tools = [
           description: "Date for the reference above, in DD-MM-YYYY format (Tally's REFERENCEDATE field). Independent of the voucher's own date.",
         },
         buyerTrn: { type: "string", description: "The buyer's TRN on this voucher — same voucher-level field and Sales-class caveat as create_voucher's buyerTrn." },
+        buyerName: { type: "string", description: "Name to print in this voucher's Buyer (Bill to) box, when it should differ from the customer ledger's own name — Tally's per-voucher Party Details mailing name. The ledger itself is not changed. Useful when many sales are posted against one shared ledger (e.g. cash or card sales) but each invoice needs its own readable buyer name." },
         buyerState: { type: "string", description: "The buyer's Emirate/state on this voucher's Party Details." },
         buyerCountry: { type: "string", description: "The buyer's country on this voucher's Party Details." },
         placeOfSupplyEmirate: { type: "string", description: "UAE VAT Place of Supply Emirate for this voucher." },
@@ -3454,6 +3461,7 @@ function createVoucherXml(args: {
   creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
+  buyerName?: string;
   buyerTrn?: string;
   buyerState?: string;
   buyerCountry?: string;
@@ -3467,6 +3475,7 @@ function createVoucherXml(args: {
   return render("create-voucher.xml.njk", {
     ...voucherMode,
     party: args.partyDetails,
+    buyerName: args.buyerName,
     voucherType: args.voucherType,
     tallyDate: args.date.split("-").reverse().join(""),
     voucherNumber: args.voucherNumber,
@@ -3510,6 +3519,7 @@ type VoucherBatchItem = {
   creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
+  buyerName?: string;
   buyerTrn?: string;
   buyerState?: string;
   buyerCountry?: string;
@@ -3540,6 +3550,7 @@ function buildVoucherBatchEntry(v: VoucherBatchItem) {
   return {
     ...applyVoucherMode(buildVoucherEntries(v), v.mode, v.partyLedger),
     party: v.partyDetails,
+    buyerName: v.buyerName,
     voucherType: v.voucherType,
     tallyDate: v.date.split("-").reverse().join(""),
     voucherNumber: v.voucherNumber,
@@ -4288,6 +4299,7 @@ async function createSalesInvoiceXml(args: {
   voucherNumber?: string;
   reference?: string;
   referenceDate?: string;
+  buyerName?: string;
   buyerTrn?: string;
   buyerState?: string;
   buyerCountry?: string;
@@ -4308,6 +4320,7 @@ async function createSalesInvoiceXml(args: {
     voucherNumber: args.voucherNumber,
     reference: args.reference,
     referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerName: args.buyerName,
     buyerTrn: args.buyerTrn,
     buyerState: args.buyerState,
     buyerCountry: args.buyerCountry,
@@ -4372,6 +4385,7 @@ async function createCreditNoteXml(args: {
   voucherNumber?: string;
   reference?: string;
   referenceDate?: string;
+  buyerName?: string;
   buyerTrn?: string;
   buyerState?: string;
   buyerCountry?: string;
@@ -4389,6 +4403,7 @@ async function createCreditNoteXml(args: {
     taxGroups,
     reference: args.reference,
     referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerName: args.buyerName,
     buyerTrn: args.buyerTrn,
     buyerState: args.buyerState,
     buyerCountry: args.buyerCountry,
@@ -4460,6 +4475,7 @@ async function updateSalesInvoiceXml(
     billType: args.billType ?? "New Ref",
     reference: args.reference,
     referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerName: args.buyerName,
     buyerTrn: args.buyerTrn,
     buyerState: args.buyerState,
     buyerCountry: args.buyerCountry,
@@ -4511,6 +4527,7 @@ async function updateCreditNoteXml(
     billType: args.billType ?? "Agst Ref",
     reference: args.reference,
     referenceDate: args.referenceDate ? args.referenceDate.split("-").reverse().join("") : undefined,
+    buyerName: args.buyerName,
     buyerTrn: args.buyerTrn,
     buyerState: args.buyerState,
     buyerCountry: args.buyerCountry,
@@ -4707,6 +4724,7 @@ function updateVoucherXml(args: {
   creditDescription?: string[];
   costCategory?: string;
   entries?: VoucherEntryInput[];
+  buyerName?: string;
   buyerTrn?: string;
   buyerState?: string;
   buyerCountry?: string;
@@ -4720,6 +4738,7 @@ function updateVoucherXml(args: {
   return render("update-voucher.xml.njk", {
     ...voucherMode,
     party: args.partyDetails,
+    buyerName: args.buyerName,
     voucherType: args.voucherType,
     voucherNumber: args.voucherNumber,
     reference: args.reference,
@@ -5980,6 +5999,7 @@ export async function handleTool(
         creditDescription?: string[];
         costCategory?: string;
         entries?: VoucherEntryInput[];
+        buyerName?: string;
         buyerTrn?: string;
         buyerState?: string;
         buyerCountry?: string;
@@ -6551,6 +6571,7 @@ export async function handleTool(
         creditDescription?: string[];
         costCategory?: string;
         entries?: VoucherEntryInput[];
+        buyerName?: string;
         buyerTrn?: string;
         buyerState?: string;
         buyerCountry?: string;

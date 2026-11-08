@@ -16,7 +16,7 @@
             {% if voucher.isAccountingInvoice %}<PARTYNAME>{{ voucher.partyLedger }}</PARTYNAME>
             <PARTYLEDGERNAME>{{ voucher.partyLedger }}</PARTYLEDGERNAME>
             <BASICBASEPARTYNAME>{{ voucher.partyLedger }}</BASICBASEPARTYNAME>
-            {% if voucher.party %}<PARTYMAILINGNAME>{{ voucher.party.mailingName }}</PARTYMAILINGNAME>
+            {% if voucher.party %}<PARTYMAILINGNAME>{{ voucher.buyerName or voucher.party.mailingName }}</PARTYMAILINGNAME>
             <BASICBUYERNAME>{{ voucher.party.mailingName }}</BASICBUYERNAME>
             <CONSIGNEEMAILINGNAME>{{ voucher.party.mailingName }}</CONSIGNEEMAILINGNAME>
             {% if voucher.party.address %}<ADDRESS.LIST TYPE="String">{% for line in voucher.party.address %}<ADDRESS>{{ line }}</ADDRESS>{% endfor %}</ADDRESS.LIST>
@@ -26,6 +26,8 @@
             {% if voucher.party.country %}{% if not voucher.buyerCountry %}<COUNTRYOFRESIDENCE>{{ voucher.party.country }}</COUNTRYOFRESIDENCE>{% endif %}<CONSIGNEECOUNTRYNAME>{{ voucher.party.country }}</CONSIGNEECOUNTRYNAME>{% endif %}
             {% if voucher.party.trn and not voucher.buyerTrn %}<TRADERCONSVATTINNO>{{ voucher.party.trn }}</TRADERCONSVATTINNO>
             <BASICBUYERSSALESTAXNO>{{ voucher.party.trn }}</BASICBUYERSSALESTAXNO>{% endif %}{% endif %}{% endif %}
+            {% if voucher.buyerName and not voucher.isAccountingInvoice %}<PARTYMAILINGNAME>{{ voucher.buyerName }}</PARTYMAILINGNAME>
+            {% endif %}
             {% if voucher.voucherNumber %}<VOUCHERNUMBER>{{ voucher.voucherNumber }}</VOUCHERNUMBER>{% endif %}
             {% if voucher.reference %}<REFERENCE>{{ voucher.reference }}</REFERENCE>{% endif %}
             {% if voucher.referenceDate %}<REFERENCEDATE>{{ voucher.referenceDate }}</REFERENCEDATE>{% endif %}
