@@ -4,6 +4,24 @@
 
 <h1 align="center">PNPC-MCP-Tally-Prime</h1>
 
+<div align="center">
+
+[![Latest release](https://img.shields.io/github/v/release/lokesh-sparrow/PNPC-MCP-Tally-Prime?sort=semver&style=for-the-badge&label=release&labelColor=0d1117&color=22d3ee)](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/lokesh-sparrow/PNPC-MCP-Tally-Prime/total?style=for-the-badge&labelColor=0d1117&color=0ea5e9)](https://github.com/lokesh-sparrow/PNPC-MCP-Tally-Prime/releases)
+[![Tools](https://img.shields.io/badge/tools-87-2563eb?style=for-the-badge&labelColor=0d1117)](#available-tools-87-total)
+[![Clients](https://img.shields.io/badge/clients-5-06b6d4?style=for-the-badge&labelColor=0d1117)](#supported-platforms)
+[![License](https://img.shields.io/badge/license-ISC-6e7681?style=for-the-badge&labelColor=0d1117)](LICENSE)
+
+<br/>
+
+<sub>Local desktop install · JSON config for OpenCode Desktop · remote HTTPS for claude.ai, ChatGPT and Grok</sub>
+
+<br/>
+
+[**Prerequisites**](#prerequisites) · [**Install**](#setup-local) · [**Tools**](#available-tools-87-total) · [**Cloud setup**](#setup-cloud) · [**Playbook**](https://lokesh-sparrow.github.io/PNPC-MCP-Tally-Prime/tool-playbook.html)
+
+</div>
+
 <p align="center">
   Tally Prime MCP (Model Context Protocol) Server implementation to feed
   TallyPrime ERP data to Claude — and unlike most Tally MCP servers, it can
